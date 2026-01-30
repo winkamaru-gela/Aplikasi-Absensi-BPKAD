@@ -14,9 +14,12 @@ Aplikasi manajemen absensi berbasis web untuk pegawai BPKAD Kabupaten Pulau Tali
 
 ## 🚀 Fitur Utama
 * **Dashboard Pegawai:** Tampilan ringkasan absensi harian.
+* **Laporan Harian:** Cetak absensi rekapan sesi pagi dan sore otomatis dengan rincian nama pegawai izin, sakit, cuti, dinas luar, dan tanpa keterangan.
 * **Firebase Auth:** Sistem login aman bagi pengguna terdaftar.
 * **Real-time Database:** Pencatatan jam masuk/keluar secara instan.
 * **Responsive Design:** Bisa diakses dengan lancar melalui HP maupun laptop.
+* **Cetak Absensi:** cetak absensi dengan validasi hari libur otomatis
+* **Fitur Hari Libur:** Tersedia untuk setting hari libur pada tahun berjalan
 
 ## 🛠️ Teknologi
 * **Core:** React.js / Vite
