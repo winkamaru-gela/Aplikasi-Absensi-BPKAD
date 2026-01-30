@@ -1,16 +1,32 @@
-# React + Vite
+# 📍 Aplikasi Absensi BPKAD Taliabu
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Aplikasi manajemen absensi berbasis web untuk pegawai BPKAD Kabupaten Pulau Taliabu yang terintegrasi dengan Firebase.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 📑 Daftar Isi
+- [Fitur Utama](#-fitur-utama)
+- [Teknologi](#-teknologi)
+- [Persiapan Lokal](#-persiapan-lokal)
+- [Konfigurasi Firebase](#-konfigurasi-firebase)
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 🚀 Fitur Utama
+* **Dashboard Pegawai:** Tampilan ringkasan absensi harian.
+* **Firebase Auth:** Sistem login aman bagi pengguna terdaftar.
+* **Real-time Database:** Pencatatan jam masuk/keluar secara instan.
+* **Responsive Design:** Bisa diakses dengan lancar melalui HP maupun laptop.
 
-## Expanding the ESLint configuration
+## 🛠️ Teknologi
+* **Core:** React.js / Vite
+* **Backend as a Service:** Firebase (Authentication & Firestore)
+* **Icons:** Lucide React / FontAwesome
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 📦 Persiapan Lokal
+
+Ikuti langkah ini untuk menjalankan aplikasi di komputer Anda:
+
+1. **Clone project**
+   ```bash
+   git clone [https://github.com/winkamaru-gela/aplikasi-absensi.git](https://github.com/winkamaru-gela/aplikasi-absensi.git)
