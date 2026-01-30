@@ -3,16 +3,16 @@ import {
   Users, FileText, LogOut, Printer, Save, Calendar, Clock, 
   UserCheck, CheckCircle, Search, Trash2, Edit, 
   Settings, Upload, Download, ChevronDown, ChevronRight, Key, 
-  RefreshCcw, FileDown, XCircle, Menu, X, LayoutDashboard, Activity, Briefcase, Lock, Shield, Clipboard, ChevronLeft, AlertTriangle, ArrowDownCircle
+  RefreshCcw, FileDown, XCircle, Menu, X, LayoutDashboard, Activity, Briefcase, Lock, Shield, Clipboard, ChevronLeft, AlertTriangle, ArrowDownCircle, Plus, Loader
 } from 'lucide-react';
 
-// --- FIREBASE CONFIGURATION ---
+// --- FIREBASE IMPORTS ---
 import { initializeApp } from "firebase/app";
 import { 
   getAuth, 
   signInAnonymously, 
   onAuthStateChanged,
-  signInWithCustomToken
+  // signInWithCustomToken dihapus karena tidak kompatibel dengan config manual
 } from "firebase/auth";
 import { 
   getFirestore, 
@@ -31,23 +31,26 @@ import {
 
 // --- KONFIGURASI DATABASE (MANUAL) ---
 const firebaseConfig = {
-  apiKey: "AIzaSyDzbUR3Xmq6YKJ86isokmWqwK5DZ5gYr6U",
-  authDomain: "absensi-bpkad-taliabu.firebaseapp.com",
-  projectId: "absensi-bpkad-taliabu",
-  storageBucket: "absensi-bpkad-taliabu.firebasestorage.app",
-  messagingSenderId: "19605510407",
-  appId: "1:19605510407:web:0d606b240ed64c0b604da2"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+// App ID tetap diambil dari environment jika ada untuk keperluan path, atau default
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 // Default Data
 const DEFAULT_LOGO_URL = "https://play-lh.googleusercontent.com/FXc0mf6YaPS9bgd1JIUN8AHu-y53Ukbz0lW3hmD3F4CR9xXuMO6TrXqxqnm_-PcA9UfD=w600-h300-pc0xffffff-pd";
 
-// Helper Path Firestore
+// Helper Path Firestore - WAJIB MENGGUNAKAN PATH INI DI CANVAS
+// Catatan: Jika menggunakan Firebase sendiri, Anda bisa mengubah struktur ini menjadi collection root (misal: collection(db, collName))
+// Namun untuk kompatibilitas saat ini, kita pertahankan strukturnya.
 const getCollectionPath = (collName) => {
     return collection(db, 'artifacts', appId, 'public', 'data', collName);
 };
@@ -70,7 +73,8 @@ const INITIAL_SETTINGS = {
   logoUrl: DEFAULT_LOGO_URL,
   kepalaName: '',
   kepalaNip: '',
-  kepalaJabatan: 'Kepala BPKAD'
+  kepalaJabatan: 'Kepala BPKAD',
+  titimangsa: 'Bobong' // Default tempat tanda tangan
 };
 
 // --- UTILS ---
@@ -152,9 +156,15 @@ export default function App() {
   useEffect(() => {
     const initAuth = async () => {
       try {
+        // PERBAIKAN: Langsung gunakan signInAnonymously untuk project manual.
+        // Token dari environment Canvas (__initial_auth_token) TIDAK COCOK dengan project firebase manual Anda.
         await signInAnonymously(auth);
       } catch (error) {
         console.error("Login Error:", error);
+        // Fallback alert jika gagal (misal Anonymous Auth belum diaktifkan di Console)
+        if (error.code === 'auth/operation-not-allowed') {
+            alert("Error: Mohon aktifkan 'Anonymous' sign-in provider di Firebase Console Anda.");
+        }
       }
     };
     initAuth();
@@ -165,18 +175,24 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Seed Admin Check (One Time)
+    // Seed Admin Check (One Time)
   useEffect(() => {
     if (!firebaseUser) return;
     const seedAdminIfEmpty = async () => {
        try {
          const usersRef = getCollectionPath('users');
-         const snapshot = await getDocs(usersRef);
-         if (snapshot.empty) {
-            const adminRef = doc(usersRef, 'admin_master');
+         // Cek langsung ke dokumen 'admin_master'
+         const adminRef = doc(usersRef, 'admin_master');
+         const adminSnap = await getDocs(query(usersRef, where("role", "==", "admin")));
+
+         // Jika benar-benar TIDAK ada user dengan role admin sama sekali
+         if (adminSnap.empty) {
+            console.log("Admin tidak ditemukan, melakukan seeding...");
             await setDoc(adminRef, INITIAL_ADMIN);
          }
-       } catch (error) { console.error(error); }
+       } catch (error) { 
+         console.error("Gagal seeding admin:", error); 
+       }
     };
     seedAdminIfEmpty();
   }, [firebaseUser]);
@@ -185,6 +201,7 @@ export default function App() {
   useEffect(() => {
     if (!firebaseUser) return;
 
+    // Tambahkan error callback untuk mencegah crash jika permission belum siap
     const unsubEmp = onSnapshot(getCollectionPath('users'), (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setEmployees(data);
@@ -232,7 +249,7 @@ export default function App() {
            <img src={DEFAULT_LOGO_URL} className="w-16 h-16 object-contain animate-bounce" alt="Loading" />
          </div>
       </div>
-      <h2 className="text-xl font-bold text-slate-700 mb-2 tracking-wide">SI-ABSENSI</h2>
+      <h2 className="text-xl font-bold text-slate-700 mb-2 tracking-wide">E-ABSENSI</h2>
       <div className="flex gap-2">
         <div className="w-2.5 h-2.5 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
         <div className="w-2.5 h-2.5 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
@@ -251,7 +268,7 @@ export default function App() {
   const isLandscape = activeTab === 'cetak_manual';
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col md:flex-row print:bg-white print:block print:h-auto text-slate-800 overflow-hidden">
+    <div className="h-screen bg-gray-50 flex flex-col md:flex-row print:bg-white print:block print:h-auto text-slate-800 overflow-hidden font-sans">
       
       {/* MOBILE HEADER */}
       <div id="mobile-header" className="md:hidden bg-blue-900 text-white p-4 flex justify-between items-center print:hidden shadow-md z-50 flex-shrink-0">
@@ -365,7 +382,7 @@ export default function App() {
   );
 }
 
-// ... LoginPage & SidebarContent (Same as previous) ...
+// ... LoginPage & SidebarContent ...
 function LoginPage({ onLogin, settings }) {
   const [u, setU] = useState('');
   const [p, setP] = useState('');
@@ -386,15 +403,15 @@ function LoginPage({ onLogin, settings }) {
         <form onSubmit={e => { e.preventDefault(); onLogin(u,p); }} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Username</label>
-            <input className="w-full p-3 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
+            <input className="w-full p-3 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
               value={u} onChange={e=>setU(e.target.value)} placeholder="Username" />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Password</label>
-            <input type="password" className="w-full p-3 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none" 
+            <input type="password" className="w-full p-3 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
               value={p} onChange={e=>setP(e.target.value)} placeholder="Password" />
           </div>
-          <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded shadow-lg transition-transform transform hover:scale-105">
+          <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded shadow-lg transition-transform transform hover:scale-105 active:scale-95">
             LOGIN APLIKASI
           </button>
         </form>
@@ -931,27 +948,29 @@ function AdminLaporanHarian({ employees, attendance, settings, holidays }) {
                       <div className="grid grid-cols-2 gap-8 mb-6 text-sm">
                           <div className="border border-black p-4">
                           <h3 className="font-bold border-b border-black mb-2 pb-1">Statistik Kehadiran</h3>
-                          <div className="flex justify-between mb-1"><span>Total Pegawai</span> <span className="font-bold">{totalPegawai}</span></div>
-                          <div className="flex justify-between mb-1"><span>Hadir (Di Kantor)</span> <span>{hadir}</span></div>
+                          <div className="flex justify-between mb-1"><span>Jumlah</span> <span className="font-bold">{totalPegawai} Orang</span></div>
+                          <div className="flex justify-between mb-1"><span>Kurang</span> <span className="font-bold">{totalTidakHadir} Orang</span></div>
+                          
+                          <div className="flex justify-between mb-1"><span>Hadir</span> <span>{hadir} Orang</span></div>
                           <div className="flex justify-between mt-2 pt-2 border-t border-dotted border-black font-bold">
-                              <span>Total Efektif</span> <span>{totalHadirFisik}</span>
+                              <span>Total Efektif</span> <span>{totalHadirFisik} Orang</span>
                           </div>
                           </div>
                           <div className="border border-black p-4">
-                          <h3 className="font-bold border-b border-black mb-2 pb-1">Statistik Ketidakhadiran</h3>
-                          <div className="flex justify-between mb-1"><span>Dinas Luar</span> <span>{dl}</span></div>
-                          <div className="flex justify-between mb-1"><span>Izin</span> <span>{izin}</span></div>
-                          <div className="flex justify-between mb-1"><span>Sakit</span> <span>{sakit}</span></div>
-                          <div className="flex justify-between mb-1"><span>Cuti</span> <span>{cuti}</span></div>
-                          <div className="flex justify-between mb-1 font-bold text-red-600 print:text-black"><span>Alpa</span> <span>{alpa}</span></div>
+                          <h3 className="font-bold border-b border-black mb-2 pb-1">Keterangan</h3>
+                          <div className="flex justify-between mb-1"><span>Tugas / Dinas Luar / Perjalanan Dinas</span> <span>{dl} Orang</span></div>
+                          <div className="flex justify-between mb-1"><span>Izin</span> <span>{izin} Orang</span></div>
+                          <div className="flex justify-between mb-1"><span>Sakit</span> <span>{sakit} Orang</span></div>
+                          <div className="flex justify-between mb-1"><span>Cuti</span> <span>{cuti} Orang</span></div>
+                          <div className="flex justify-between mb-1 font-bold text-red-600 print:text-black"><span>Tanpa Keterangan</span> <span>{alpa} Orang</span></div>
                           <div className="flex justify-between mt-2 pt-2 border-t border-dotted border-black font-bold">
-                              <span>Total Tidak Hadir</span> <span>{totalTidakHadir}</span>
+                              <span>Total Tidak Hadir</span> <span>{totalTidakHadir} Orang</span>
                           </div>
                           </div>
                       </div>
 
                       <div>
-                          <h3 className="font-bold mb-2 text-sm uppercase underline">Daftar Pegawai Tidak Hadir:</h3>
+                          <h3 className="font-bold mb-2 text-sm uppercase underline">Rincian dan Keterangan:</h3>
                           <table className="w-full border-collapse border border-black text-sm">
                           <thead>
                               <tr className="bg-gray-100 print:bg-transparent">
@@ -1013,11 +1032,11 @@ function AdminLaporanHarian({ employees, attendance, settings, holidays }) {
                                   <td className="border border-black p-2 font-bold align-top">KETERANGAN</td>
                                   <td className="border border-black p-2 align-top">
                                       <div className="flex flex-col gap-1">
-                                          <div>1. TUGAS :  {dl}  ORANG</div>
-                                          <div>2. IZIN :  {izin}  ORANG</div>
-                                          <div>3. CUTI :  {cuti}  ORANG</div>
-                                          <div>4. SAKIT :  {sakit}  ORANG</div>
-                                          <div>5. TANPA KETERANGAN : {alpa}  ORANG</div>
+                                          <div><b>TUGAS</b> :  {dl}  ORANG</div>
+                                          <div><b>IZIN</b> :  {izin}  ORANG</div>
+                                          <div><b>CUTI</b> :  {cuti}  ORANG</div>
+                                          <div><b>SAKIT</b> :  {sakit}  ORANG</div>
+                                          <div><b>TANPA KETERANGAN</b> : {alpa}  ORANG</div>
                                       </div>
                                   </td>
                               </tr>
@@ -1116,7 +1135,7 @@ function AdminLaporanHarian({ employees, attendance, settings, holidays }) {
          {/* TANDA TANGAN (TETAP MUNCUL MESKI HARI LIBUR) */}
          <div className="mt-16 flex justify-end text-center">
             <div className="min-w-[200px] w-auto px-4">
-                <p>Bobong, {formatDateNoWeekday(date)}</p>
+                <p>{settings.titimangsa || 'Bobong'}, {formatDateNoWeekday(date)}</p>
                 <br/>
                 <p>Mengetahui,</p>
                 <p>{settings.kepalaJabatan || `Kepala ${settings.opdName}`}</p>
@@ -1398,7 +1417,7 @@ function AdminRekapanBulanan({ employees, attendance, settings, user }) {
 
           <div className="mt-16 flex justify-end text-center">
             <div className="min-w-[200px] w-auto px-4">
-               <p>Bobong, {new Date(month + '-28').toLocaleDateString('id-ID', {month:'long', year:'numeric'})}</p>
+               <p>{settings.titimangsa || 'Bobong'}, {new Date(month + '-28').toLocaleDateString('id-ID', {month:'long', year:'numeric'})}</p>
                <p className="mb-20">{settings.kepalaJabatan || `Kepala ${settings.opdShort}`}</p>
                <p className="font-bold underline whitespace-nowrap">{settings.kepalaName || '_________________________'}</p>
                <p>NIP. {settings.kepalaNip || '..............................'}</p>
@@ -1454,28 +1473,34 @@ function AdminDataPegawai({ employees, currentUser }) {
   const [isEditing, setIsEditing] = useState(null);
   const [isInserting, setIsInserting] = useState(null); // ID pegawai referensi untuk insert
   const [selectedIds, setSelectedIds] = useState([]); // STATE BARU UNTUK CEKLIST
+  const [isSaving, setIsSaving] = useState(false); // STATE BARU: Mencegah double click
   const formRef = useRef(null);
 
   // UTILITY: Fungsi untuk mengurutkan ulang seluruh pegawai dari 1 s/d N
+  // MODIFIKASI: Mengambil data langsung dari Firestore untuk memastikan data terbaru
   const renumberAllEmployees = async () => {
-     // Ambil semua pegawai kecuali admin, urutkan berdasarkan 'no' yang sekarang (convert ke float/int)
-     const userEmployees = employees
-        .filter(e => e.role === 'user')
-        .sort((a,b) => parseFloat(a.no) - parseFloat(b.no));
-     
-     const batch = writeBatch(db);
-     
-     userEmployees.forEach((emp, index) => {
-        const newNo = (index + 1).toString();
-        // Hanya update jika nomornya berubah
-        if (emp.no !== newNo) {
-           batch.update(doc(getCollectionPath('users'), emp.id), { no: newNo });
-        }
-     });
-
      try {
+        // Ambil data fresh dari server untuk menghindari state lama (stale closure)
+        const snapshot = await getDocs(getCollectionPath('users'));
+        const allDocs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        
+        // Filter hanya yang role 'user' agar admin/operator tidak ikut dinomori
+        const userEmployees = allDocs
+            .filter(e => e.role === 'user')
+            .sort((a,b) => (parseFloat(a.no) || 999999) - (parseFloat(b.no) || 999999));
+        
+        const batch = writeBatch(db);
+        
+        userEmployees.forEach((emp, index) => {
+            const newNo = (index + 1).toString();
+            // Hanya update jika nomornya berubah
+            if (emp.no !== newNo) {
+               batch.update(doc(getCollectionPath('users'), emp.id), { no: newNo });
+            }
+        });
+
         await batch.commit();
-        console.log("Penomoran ulang berhasil.");
+        console.log("Penomoran ulang otomatis berhasil.");
      } catch (err) {
         console.error("Gagal menomori ulang:", err);
      }
@@ -1567,15 +1592,33 @@ function AdminDataPegawai({ employees, currentUser }) {
        alert('Username dan Password wajib diisi.');
        return;
     }
+    
+    // MENCEGAH DOUBLE SUBMIT
+    if (isSaving) return;
+    setIsSaving(true);
 
     try {
+      // Salin data form
+      let dataToSave = { ...form };
+
       if (isEditing) {
-         await updateDoc(doc(getCollectionPath('users'), isEditing), form);
+         // Hapus field ID agar tidak tersimpan sebagai field dalam dokumen
+         delete dataToSave.id; 
+         await updateDoc(doc(getCollectionPath('users'), isEditing), dataToSave);
       } else {
-         // LOGIKA BARU: Jika sedang INSERT (Sisip)
-         // Kita simpan dulu dengan nomor sementara (misal: "5.5" jika disisip setelah no 5)
-         // Nanti fungsi renumberAllEmployees akan merapikannya jadi integer
-         await addDoc(getCollectionPath('users'), { ...form });
+         // LOGIKA BARU: Pastikan Nomor Urut Terisi
+         // Jika sedang INSERT (Sisip), nomor sudah dihitung di handleInsertClick (misal 5.5)
+         // Jika TAMBAH BIASA (Paling Bawah), nomor mungkin kosong, jadi kita hitung max + 1
+         if (!dataToSave.no) {
+             const userEmployees = employees.filter(e => e.role === 'user');
+             const maxNo = userEmployees.reduce((max, emp) => {
+                 const n = parseFloat(emp.no);
+                 return (!isNaN(n) && n > max) ? n : max;
+             }, 0);
+             dataToSave.no = (maxNo + 1).toString();
+         }
+         
+         await addDoc(getCollectionPath('users'), dataToSave);
       }
       
       setForm({ nama: '', jabatan: '', role: 'user', username: '', password: '', no: '' });
@@ -1583,14 +1626,14 @@ function AdminDataPegawai({ employees, currentUser }) {
       setIsInserting(null);
 
       // JALANKAN AUTO RENUMBER SETELAH SIMPAN
-      // Beri jeda sedikit agar Firestore sempat menyimpan data baru
-      setTimeout(() => {
-         renumberAllEmployees();
-      }, 1000);
+      // Panggil fungsi renumber yang sudah diperbaiki (fetch fresh data)
+      await renumberAllEmployees();
 
     } catch (err) {
        console.error(err);
        alert('Terjadi kesalahan saat menyimpan data.');
+    } finally {
+        setIsSaving(false);
     }
   };
 
@@ -1602,7 +1645,8 @@ function AdminDataPegawai({ employees, currentUser }) {
      // Buat nomor sementara = (Nomor Referensi) + 0.5
      // Contoh: Sisip setelah no 5 -> jadi 5.5
      // Nanti akan diurutkan ulang jadi 6, dan yang lama geser ke 7
-     const tempNo = (parseFloat(referenceEmp.no) + 0.5).toString();
+     const currentNo = parseFloat(referenceEmp.no) || 0;
+     const tempNo = (currentNo + 0.5).toString();
 
      setForm({ 
         nama: '', 
@@ -1619,17 +1663,24 @@ function AdminDataPegawai({ employees, currentUser }) {
   const edit = (emp) => {
     setIsEditing(emp.id);
     setIsInserting(null);
-    setForm(emp);
+    // Copy data pegawai ke form
+    setForm({
+        ...emp,
+        password: emp.password || '' // Pastikan password terisi string (bukan undefined)
+    });
     if(formRef.current) formRef.current.scrollIntoView({ behavior: 'smooth' });
   };
 
   const remove = async (id) => {
-    if (confirm('Hapus akun ini?')) {
-       await deleteDoc(doc(getCollectionPath('users'), id));
-       // JALANKAN AUTO RENUMBER SETELAH HAPUS
-       setTimeout(() => {
-          renumberAllEmployees();
-       }, 1000);
+    if (confirm('Hapus data pegawai ini secara permanen?')) {
+       try {
+           await deleteDoc(doc(getCollectionPath('users'), id));
+           // JALANKAN AUTO RENUMBER SETELAH HAPUS
+           await renumberAllEmployees();
+       } catch (error) {
+           console.error("Gagal menghapus:", error);
+           alert("Gagal menghapus data.");
+       }
     }
   };
 
@@ -1653,7 +1704,7 @@ function AdminDataPegawai({ employees, currentUser }) {
          await batch.commit();
          setSelectedIds([]); // Reset pilihan
          // Auto renumber setelah hapus banyak
-         setTimeout(() => renumberAllEmployees(), 1000);
+         await renumberAllEmployees();
       } catch (error) {
          console.error("Error bulk delete:", error);
          alert("Gagal menghapus data.");
@@ -1679,16 +1730,19 @@ function AdminDataPegawai({ employees, currentUser }) {
   const isReadOnly = currentUser.role === 'pengelola';
   
   // Sort tampilan tabel berdasarkan nomor (float/int)
-  const sortedEmployees = [...employees].sort((a, b) => {
-     const noA = parseFloat(a.no) || 99999;
-     const noB = parseFloat(b.no) || 99999;
-     return noA - noB;
-  });
+  // MODIFIKASI: Filter hanya role 'user'
+  const sortedEmployees = employees
+    .filter(e => e.role === 'user') // Hanya tampilkan pegawai biasa
+    .sort((a, b) => {
+       const noA = parseFloat(a.no) || 99999;
+       const noB = parseFloat(b.no) || 99999;
+       return noA - noB;
+    });
 
   return (
      <div className="bg-white p-6 rounded shadow-sm">
         <div className="flex justify-between items-center mb-6">
-           <h2 className="text-xl font-bold flex items-center"><Users className="mr-2"/> Data Pegawai</h2>
+           <h2 className="text-xl font-bold flex items-center"><Users className="mr-2"/> Data Pegawai (User Biasa)</h2>
            {!isReadOnly && (
              <div className="flex gap-2">
                 {/* Tombol Hapus Massal Muncul jika ada yang dipilih */}
@@ -1742,9 +1796,15 @@ function AdminDataPegawai({ employees, currentUser }) {
                </div>
 
                <div className="col-span-2 flex items-end gap-2">
-                  <button type="button" onClick={resetForm} className="bg-gray-400 text-white py-2 px-4 rounded font-bold hover:bg-gray-500">Batal</button>
-                  <button className={`flex-1 text-white py-2 rounded font-bold ${isInserting ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                     {isInserting ? 'Sisipkan Data' : isEditing ? 'Simpan Perubahan' : 'Tambah'}
+                  <button type="button" onClick={resetForm} disabled={isSaving} className="bg-gray-400 text-white py-2 px-4 rounded font-bold hover:bg-gray-500 disabled:opacity-50">Batal</button>
+                  <button disabled={isSaving} className={`flex-1 text-white py-2 rounded font-bold flex justify-center items-center ${isInserting ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:bg-gray-400 disabled:cursor-not-allowed`}>
+                     {isSaving ? (
+                        <>
+                           <Loader className="animate-spin mr-2" size={16}/> Menyimpan...
+                        </>
+                     ) : (
+                        isInserting ? 'Sisipkan Data' : isEditing ? 'Simpan Perubahan' : 'Tambah'
+                     )}
                   </button>
                </div>
             </form>
@@ -1823,6 +1883,7 @@ function AdminSettings({ settings, holidays, employees, user }) {
   const [tab, setTab] = useState('setup');
   const [formSet, setFormSet] = useState(settings);
   const [holForm, setHolForm] = useState({ date: '', desc: '' });
+  const [newUserForm, setNewUserForm] = useState({ nama: '', jabatan: 'Staf Khusus', username: '', password: '', role: 'operator' });
   const isReadOnly = user.role === 'pengelola';
 
   const saveSetup = async () => {
@@ -1877,9 +1938,30 @@ function AdminSettings({ settings, holidays, employees, user }) {
      reader.readAsText(file);
   };
 
-  const updateUserCreds = async (id, newU, newP) => {
+  const updateUserCreds = async (id, newU, newP, newRole) => {
      if(isReadOnly) return;
-     await updateDoc(doc(getCollectionPath('users'), id), { username: newU, password: newP });
+     const updateData = { username: newU, password: newP };
+     if (newRole) updateData.role = newRole;
+     
+     await updateDoc(doc(getCollectionPath('users'), id), updateData);
+  };
+
+  const handleAddSystemUser = async (e) => {
+      e.preventDefault();
+      if (!newUserForm.username || !newUserForm.password || !newUserForm.nama) {
+          alert("Lengkapi data user baru!");
+          return;
+      }
+      try {
+          // Beri nomor urut tinggi agar tidak mengganggu list pegawai biasa
+          const userData = { ...newUserForm, no: '999' };
+          await addDoc(getCollectionPath('users'), userData);
+          setNewUserForm({ nama: '', jabatan: 'Staf Khusus', username: '', password: '', role: 'operator' });
+          alert("User manajemen berhasil ditambahkan!");
+      } catch (error) {
+          console.error(error);
+          alert("Gagal menambahkan user.");
+      }
   };
 
   // Filter users for printing
@@ -1925,10 +2007,14 @@ function AdminSettings({ settings, holidays, employees, user }) {
                         <label className="font-bold text-xs uppercase block mb-1">NIP</label>
                         <input disabled={isReadOnly} className="w-full border p-2 rounded disabled:bg-gray-100" value={formSet.kepalaNip || ''} onChange={e=>setFormSet({...formSet, kepalaNip: e.target.value})}/>
                     </div>
-                    <div className="md:col-span-2">
+                    <div>
                         <label className="font-bold text-xs uppercase block mb-1">Jabatan Pimpinan</label>
                         <input disabled={isReadOnly} className="w-full border p-2 rounded disabled:bg-gray-100" value={formSet.kepalaJabatan || ''} onChange={e=>setFormSet({...formSet, kepalaJabatan: e.target.value})}/>
                         <span className="text-[10px] text-gray-500">*Contoh: Kepala Badan Pengelolaan Keuangan dan Aset Daerah</span>
+                    </div>
+                    <div>
+                        <label className="font-bold text-xs uppercase block mb-1">Tempat Tanda Tangan (Titimangsa)</label>
+                        <input disabled={isReadOnly} className="w-full border p-2 rounded disabled:bg-gray-100" value={formSet.titimangsa || 'Bobong'} onChange={e=>setFormSet({...formSet, titimangsa: e.target.value})}/>
                     </div>
                  </div>
              </div>
@@ -1974,34 +2060,101 @@ function AdminSettings({ settings, holidays, employees, user }) {
        {tab === 'user' && (
           <div>
              <div className="print:hidden">
-                 <div className="flex justify-between items-center mb-4">
-                    <div className="bg-yellow-50 p-3 text-sm text-yellow-800 rounded border border-yellow-200 flex items-center">
+                 {/* FORM TAMBAH USER KHUSUS (ADMIN/OPERATOR) */}
+                 {!isReadOnly && user.role === 'admin' && (
+                     <div className="bg-blue-50 p-4 mb-6 rounded border border-blue-200">
+                         <h3 className="font-bold text-sm text-blue-800 mb-3 uppercase flex items-center">
+                             <Plus className="mr-2" size={16}/> Tambah User Manajemen (Khusus)
+                         </h3>
+                         <form onSubmit={handleAddSystemUser} className="grid grid-cols-1 md:grid-cols-6 gap-3 text-xs">
+                             <div className="col-span-2">
+                                 <label className="font-bold block mb-1">Nama Lengkap</label>
+                                 <input className="w-full border p-2 rounded" placeholder="Nama..." value={newUserForm.nama} onChange={e=>setNewUserForm({...newUserForm, nama: e.target.value})} />
+                             </div>
+                             <div className="col-span-2">
+                                 <label className="font-bold block mb-1">Username</label>
+                                 <input className="w-full border p-2 rounded" placeholder="Username..." value={newUserForm.username} onChange={e=>setNewUserForm({...newUserForm, username: e.target.value})} />
+                             </div>
+                             <div className="col-span-2">
+                                 <label className="font-bold block mb-1">Password</label>
+                                 <input className="w-full border p-2 rounded" placeholder="Password..." value={newUserForm.password} onChange={e=>setNewUserForm({...newUserForm, password: e.target.value})} />
+                             </div>
+                             <div className="col-span-2">
+                                 <label className="font-bold block mb-1">Role / Hak Akses</label>
+                                 <select className="w-full border p-2 rounded bg-white" value={newUserForm.role} onChange={e=>setNewUserForm({...newUserForm, role: e.target.value})}>
+                                     <option value="operator">OPERATOR (Input & Kelola)</option>
+                                     <option value="pengelola">PENGELOLA (Read Only)</option>
+                                     <option value="admin">ADMIN (Full Akses)</option>
+                                 </select>
+                             </div>
+                             <div className="col-span-1">
+                                <label className="font-bold block mb-1">Jabatan</label>
+                                <input className="w-full border p-2 rounded" placeholder="Jabatan..." value={newUserForm.jabatan} onChange={e=>setNewUserForm({...newUserForm, jabatan: e.target.value})} />
+                             </div>
+                             <div className="col-span-3 flex items-end">
+                                 <button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-bold">TAMBAH USER</button>
+                             </div>
+                         </form>
+                     </div>
+                 )}
+
+                 {/* TABEL 1: USER SISTEM (Admin, Operator, Pengelola) */}
+                 <div className="mb-8">
+                    <div className="bg-blue-100 p-3 text-sm text-blue-800 rounded border border-blue-200 flex items-center mb-2 font-bold">
                         <Shield className="mr-2" size={16}/>
-                        <span>Pengaturan Kredensial (Username & Password)</span>
+                        <span>Daftar User Sistem (Admin / Operator / Pengelola)</span>
                     </div>
-                     {!isReadOnly && (
-                         <button onClick={()=>window.print()} className="bg-slate-800 text-white px-4 py-2 rounded flex items-center hover:bg-black text-sm">
-                            <Printer size={16} className="mr-2"/> Cetak Data User
-                         </button>
-                     )}
+                    <div className="overflow-x-auto border rounded-lg shadow-sm">
+                        <table className="w-full text-sm">
+                           <thead className="bg-slate-100">
+                              <tr>
+                                 <th className="p-2 border text-left">Nama</th>
+                                 <th className="p-2 border text-left">Role (Hak Akses)</th>
+                                 <th className="p-2 border text-left">Username</th>
+                                 <th className="p-2 border text-left">Password</th>
+                                 <th className="p-2 border">Aksi</th>
+                              </tr>
+                           </thead>
+                           <tbody className="bg-white">
+                              {employees.filter(e => e.role !== 'user').map(u => (
+                                 <UserRow key={u.id} targetUser={u} currentUser={user} onSave={updateUserCreds} isReadOnly={isReadOnly} />
+                              ))}
+                           </tbody>
+                        </table>
+                    </div>
                  </div>
-                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm border">
-                       <thead className="bg-slate-100">
-                          <tr>
-                             <th className="p-2 border text-left">Nama</th>
-                             <th className="p-2 border text-left">Role</th>
-                             <th className="p-2 border text-left">Username</th>
-                             <th className="p-2 border text-left">Password</th>
-                             <th className="p-2 border">Simpan</th>
-                          </tr>
-                       </thead>
-                       <tbody>
-                          {employees.sort((a,b) => (a.role === 'admin' ? -1 : 1)).map(u => (
-                             <UserRow key={u.id} targetUser={u} currentUser={user} onSave={updateUserCreds} isReadOnly={isReadOnly} />
-                          ))}
-                       </tbody>
-                    </table>
+
+                 {/* TABEL 2: AKUN PEGAWAI (User Biasa) */}
+                 <div>
+                    <div className="flex justify-between items-center mb-2">
+                        <div className="bg-yellow-50 p-3 text-sm text-yellow-800 rounded border border-yellow-200 flex items-center font-bold flex-1">
+                            <Users className="mr-2" size={16}/>
+                            <span>Akun Login Pegawai (Data Pegawai)</span>
+                        </div>
+                         {!isReadOnly && (
+                             <button onClick={()=>window.print()} className="bg-slate-800 text-white px-4 py-2 rounded flex items-center hover:bg-black text-sm ml-2">
+                                <Printer size={16} className="mr-2"/> Cetak Data
+                             </button>
+                         )}
+                    </div>
+                    <div className="overflow-x-auto border rounded-lg shadow-sm">
+                        <table className="w-full text-sm">
+                           <thead className="bg-slate-100">
+                              <tr>
+                                 <th className="p-2 border text-left">Nama</th>
+                                 <th className="p-2 border text-left">Role (Hak Akses)</th>
+                                 <th className="p-2 border text-left">Username</th>
+                                 <th className="p-2 border text-left">Password</th>
+                                 <th className="p-2 border">Aksi</th>
+                              </tr>
+                           </thead>
+                           <tbody className="bg-white">
+                              {employees.filter(e => e.role === 'user').sort((a,b) => (parseInt(a.no)||999) - (parseInt(b.no)||999)).map(u => (
+                                 <UserRow key={u.id} targetUser={u} currentUser={user} onSave={updateUserCreds} isReadOnly={isReadOnly} />
+                              ))}
+                           </tbody>
+                        </table>
+                    </div>
                  </div>
              </div>
 
@@ -2027,6 +2180,7 @@ function AdminSettings({ settings, holidays, employees, user }) {
                          <th className="border border-black p-2 w-12 text-center">No</th>
                          <th className="border border-black p-2 text-left">Nama Pegawai</th>
                          <th className="border border-black p-2 text-left">Jabatan</th>
+                         <th className="border border-black p-2 text-left">Role</th>
                          <th className="border border-black p-2 text-left">Username</th>
                          <th className="border border-black p-2 text-left">Password</th>
                       </tr>
@@ -2037,6 +2191,7 @@ function AdminSettings({ settings, holidays, employees, user }) {
                             <td className="border border-black p-2 text-center">{i + 1}</td>
                             <td className="border border-black p-2 font-bold">{u.nama}</td>
                             <td className="border border-black p-2">{u.jabatan}</td>
+                            <td className="border border-black p-2 uppercase">{u.role}</td>
                             <td className="border border-black p-2 font-mono">{u.username}</td>
                             <td className="border border-black p-2 font-mono">{u.password}</td>
                          </tr>
@@ -2053,26 +2208,48 @@ function AdminSettings({ settings, holidays, employees, user }) {
 function UserRow({ targetUser, currentUser, onSave, isReadOnly }) {
    const [u, setU] = useState(targetUser.username);
    const [p, setP] = useState(targetUser.password);
+   const [r, setR] = useState(targetUser.role || 'user');
    const [changed, setChanged] = useState(false);
 
    let canEdit = !isReadOnly && (currentUser.role === 'admin' || (currentUser.role === 'operator' && targetUser.role !== 'admin'));
    const showPassword = currentUser.role === 'admin' || targetUser.role !== 'admin';
+   const canEditRole = !isReadOnly && currentUser.role === 'admin'; // Hanya Admin yang bisa ganti role
 
    const handleChange = (type, val) => {
-      if(type === 'u') setU(val); else setP(val);
+      if(type === 'u') setU(val); 
+      else if(type === 'p') setP(val);
+      else setR(val);
       setChanged(true);
    };
 
    return (
       <tr className={`hover:bg-slate-50 ${targetUser.id === currentUser.id ? 'bg-blue-50' : ''}`}>
          <td className="p-2 border">
-            {targetUser.nama}
-            {targetUser.id === currentUser.id && <span className="ml-2 text-[10px] bg-blue-600 text-white px-1 rounded">Saya</span>}
+            <div className="font-medium">{targetUser.nama}</div>
+            {targetUser.id === currentUser.id && <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-bold">AKUN SAYA</span>}
+            {/* Tampilkan jabatan jika user sistem */}
+            {targetUser.role !== 'user' && <div className="text-[10px] text-gray-500 italic">{targetUser.jabatan}</div>}
          </td>
-         <td className="p-2 border uppercase text-xs font-bold">{targetUser.role}</td>
+         <td className="p-2 border">
+            {canEditRole ? (
+                <select className="border p-1 rounded w-full text-xs font-bold uppercase bg-white" value={r} onChange={e=>handleChange('r', e.target.value)}>
+                    <option value="user">USER (Pegawai Biasa)</option>
+                    <option value="operator">OPERATOR</option>
+                    <option value="pengelola">PENGELOLA</option>
+                    <option value="admin">ADMIN</option>
+                </select>
+            ) : (
+                <span className={`uppercase text-xs font-bold px-2 py-1 rounded 
+                    ${targetUser.role === 'admin' ? 'bg-red-100 text-red-700' : 
+                      targetUser.role === 'operator' ? 'bg-blue-100 text-blue-700' : 
+                      targetUser.role === 'pengelola' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100'}`}>
+                    {targetUser.role}
+                </span>
+            )}
+         </td>
          <td className="p-2 border">
             <input 
-               className={`border p-1 rounded w-full ${!canEdit ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white'}`} 
+               className={`border p-1 rounded w-full font-mono ${!canEdit ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white'}`} 
                value={u} 
                onChange={e=>handleChange('u', e.target.value)}
                disabled={!canEdit}
@@ -2080,7 +2257,7 @@ function UserRow({ targetUser, currentUser, onSave, isReadOnly }) {
          </td>
          <td className="p-2 border">
             <input 
-               className={`border p-1 rounded w-full ${!canEdit ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white'}`} 
+               className={`border p-1 rounded w-full font-mono ${!canEdit ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white'}`} 
                value={showPassword ? p : '******'} 
                onChange={e=>handleChange('p', e.target.value)}
                disabled={!canEdit}
@@ -2089,7 +2266,7 @@ function UserRow({ targetUser, currentUser, onSave, isReadOnly }) {
          </td>
          <td className="p-2 border text-center">
             {changed && canEdit && (
-               <button onClick={() => { onSave(targetUser.id, u, p); setChanged(false); }} className="text-green-600 hover:bg-green-100 p-1 rounded">
+               <button onClick={() => { onSave(targetUser.id, u, p, r); setChanged(false); }} className="text-green-600 hover:bg-green-100 p-1 rounded bg-green-50 shadow-sm border border-green-200">
                   <Save size={16}/>
                </button>
             )}
@@ -2331,7 +2508,7 @@ function UserRekapan({ user, attendance, settings }) {
             </table>
             <div className="mt-16 flex justify-end text-center">
                <div className="min-w-[200px] w-auto px-4">
-                  <p>Bobong, {new Date().toLocaleDateString('id-ID', {day: 'numeric', month:'long', year:'numeric'})}</p>
+                  <p>{settings.titimangsa || 'Bobong'}, {new Date().toLocaleDateString('id-ID', {day: 'numeric', month:'long', year:'numeric'})}</p>
                   <p className="mb-20">Pegawai Yang Bersangkutan</p>
                   <p className="font-bold underline whitespace-nowrap">{user.nama}</p>
                </div>
