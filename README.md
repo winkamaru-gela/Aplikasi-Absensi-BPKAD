@@ -29,3 +29,7 @@ Aplikasi manajemen absensi berbasis web untuk pegawai BPKAD Kabupaten Pulau Tali
 * **Core:** React.js / Vite
 * **Backend as a Service:** Firebase (Authentication & Firestore)
 * **Icons:** Lucide React / FontAwesome
+
+<img width="1365" height="717" alt="rekapan-absensi-persesi" src="https://github.com/user-attachments/assets/6d6da578-d2fa-4284-b844-2a03761cc3f4" />
+<img width="1361" height="720" alt="dashboard" src="https://github.com/user-attachments/assets/cb3d6c44-4a00-46dd-a1e6-e8423bf0f41c" />
+<img width="1364" height="721" alt="halaman-login" src="https://github.com/user-attachments/assets/b18317e5-2570-43fd-95ad-84b0c4064f2c" />
