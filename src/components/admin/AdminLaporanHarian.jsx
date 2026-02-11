@@ -270,7 +270,7 @@ export default function AdminLaporanHarian({ employees, attendance, settings, ho
                               {/* BARIS HEADER 'HADIR' (MERGED) & ISI 3 KOLOM */}
                               <tr>
                                   <td colSpan="2" className="border border-black p-2 font-bold text-center uppercase bg-gray-50 print:bg-transparent">
-                                    HADIR DI KANTOR {session}
+                                    JUMLAH PEGAWAI EFEKTIF HARI INI: HADIR APEL {session}
                                   </td>
                               </tr>
 
