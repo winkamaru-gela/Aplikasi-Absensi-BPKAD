@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, X, ChevronLeft, List, Loader2 } from 'lucide-react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'; // IMPORT UTAMA ROUTER
 
 // --- CUSTOM HOOK (LOGIC) ---
 import { useAppData } from './hooks/useAppData';
@@ -26,7 +27,7 @@ import UserAbsensi from './components/user/UserAbsensi';
 import UserLaporanStatus from './components/user/UserLaporanStatus';
 import UserRekapan from './components/user/UserRekapan';
 
-// --- DAFTAR QUOTES / NASEHAT ---
+// --- QUOTES LOADING ---
 const LOADING_QUOTES = [
   "Bekerjalah dengan hati, maka hasil akan mengikuti.",
   "Integritas adalah melakukan hal yang benar, walau tidak ada yang melihat.",
@@ -40,47 +41,48 @@ const LOADING_QUOTES = [
   "Mulai hari ini dengan semangat baru dan pikiran positif."
 ];
 
-export default function App() {
+// === KOMPONEN UTAMA (YANG DIBUNGKUS ROUTER) ===
+function MainContent() {
   const { 
-    appUser, 
-    employees, 
-    attendance, 
-    settings, 
-    holidays, 
-    loading, 
-    handleAppLogin, 
-    handleAppLogout 
+    appUser, employees, attendance, settings, holidays, loading, handleAppLogin, handleAppLogout 
   } = useAppData();
 
-  const [activeTab, setActiveTab] = useState('admin_dashboard'); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true);
-  
-  // State untuk Quote Loading
   const [loadingQuote, setLoadingQuote] = useState("");
+  const location = useLocation(); // Hook untuk cek URL aktif
 
-  // Effect: Pilih Quote Acak saat pertama kali load
   useEffect(() => {
     const randomIndex = Math.floor(Math.random() * LOADING_QUOTES.length);
     setLoadingQuote(LOADING_QUOTES[randomIndex]);
-  }, []); // [] artinya hanya jalan sekali saat mount
-
-  useEffect(() => {
-     setActiveTab('admin_dashboard');
-  }, [appUser]);
-
-  const onLogin = (u, p) => {
-      const success = handleAppLogin(u, p);
-      if(!success) alert('Username atau password salah!');
-      return success; // Return status login untuk animasi di LoginPage
-  };
+  }, []);
 
   const onLogout = () => {
       handleAppLogout();
       setIsMobileMenuOpen(false);
   };
 
-  // --- TAMPILAN LOADING AWAL (DENGAN QUOTE) ---
+  // Helper untuk Judul Header berdasarkan URL
+  const getHeaderTitle = () => {
+    const path = location.pathname;
+    switch(path) {
+        case '/': return 'Dashboard';
+        case '/input-absensi': return 'Input Absensi';
+        case '/laporan-harian': return 'Laporan Harian';
+        case '/laporan-bulanan': return 'Rekapan Bulanan';
+        case '/rekapan-tahunan': return 'Rekapan Tahunan';
+        case '/cetak-manual': return 'Cetak Manual';
+        case '/aplikasi-surat': return 'Aplikasi Surat';
+        case '/verifikasi-absensi': return 'Verifikasi Absensi';
+        case '/data-pegawai': return 'Data Pegawai';
+        case '/settings': return 'Pengaturan';
+        case '/absensi-mandiri': return 'Absensi Mandiri';
+        case '/status-absensi': return 'Status Absensi';
+        default: return 'Aplikasi Absensi';
+    }
+  };
+
+  // --- TAMPILAN LOADING ---
   if (loading) return (
     <div className="flex flex-col h-screen items-center justify-center bg-slate-50 px-6 font-sans">
       <div className="text-center max-w-lg">
@@ -90,44 +92,19 @@ export default function App() {
                 <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
              </div>
           </div>
-          
-          {/* Quote Tampil Di Sini */}
-          <h3 className="text-lg md:text-xl font-bold text-slate-700 mb-2 leading-relaxed italic">
-            "{loadingQuote}"
-          </h3>
-          
-          <p className="text-xs text-slate-400 mt-4 uppercase tracking-widest font-semibold">
-            Memuat Data Aplikasi...
-          </p>
+          <h3 className="text-lg md:text-xl font-bold text-slate-700 mb-2 leading-relaxed italic">"{loadingQuote}"</h3>
+          <p className="text-xs text-slate-400 mt-4 uppercase tracking-widest font-semibold">Memuat Data Aplikasi...</p>
       </div>
     </div>
   );
 
-  if (!appUser) return <LoginPage onLogin={onLogin} settings={settings} />;
+  // --- HALAMAN LOGIN ---
+  if (!appUser) return <LoginPage onLogin={handleAppLogin} settings={settings} />;
 
   const isManagement = ['admin', 'operator', 'pengelola'].includes(appUser.role);
   const pendingCount = attendance.filter(l => l.statusApproval === 'pending').length;
-  const isLandscape = activeTab === 'cetak_manual' || activeTab === 'manajemen_surat' || activeTab === 'rekapan_tahunan';
-
-  const getHeaderTitle = () => {
-    switch(activeTab) {
-        case 'admin_dashboard': return 'Dashboard';
-        case 'input_absensi': return 'Input Absensi';
-        case 'laporan_harian': return 'Laporan Harian';
-        case 'laporan_bulanan': return 'Rekapan Bulanan';
-        case 'rekapan_tahunan': return 'Rekapan Tahunan';
-        case 'cetak_manual': return 'Cetak Manual';
-        case 'manajemen_surat': return 'Aplikasi Surat';
-        case 'terima_absensi': return 'Verifikasi Absensi';
-        case 'data_pegawai': return 'Data Pegawai';
-        case 'settings': return 'Pengaturan';
-        case 'user_absensi': return 'Absensi Mandiri';
-        case 'user_laporan_status': return 'Status Absensi';
-        case 'user_rekapan': return 'Rekapan Bulanan';
-        case 'user_laporan_harian': return 'Laporan Harian';
-        default: return 'Aplikasi Absensi';
-    }
-  };
+  // Cek untuk print layout
+  const isLandscape = ['/cetak-manual', '/aplikasi-surat', '/rekapan-tahunan'].includes(location.pathname);
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col md:flex-row print:bg-white print:block print:h-auto text-slate-800 overflow-hidden font-sans">
@@ -150,8 +127,6 @@ export default function App() {
       `}>
          <SidebarContent 
             user={appUser} 
-            activeTab={activeTab} 
-            setActiveTab={(tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} 
             onLogout={onLogout} 
             settings={settings} 
             pendingCount={pendingCount}
@@ -164,41 +139,24 @@ export default function App() {
       {/* --- MAIN CONTENT WRAPPER --- */}
       <main id="main-content" className="flex-1 flex flex-col h-full overflow-hidden relative transition-all duration-300 w-full">
         
-        {/* HEADER (Sticky Top) */}
+        {/* HEADER */}
         <header className="bg-white shadow-sm h-16 flex items-center justify-between px-4 md:px-6 flex-shrink-0 print:hidden z-10 sticky top-0">
             <div className="flex items-center gap-3">
-                {/* Tombol Toggle Mobile */}
-                <button 
-                    onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
-                    className="md:hidden p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
-                >
+                <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="md:hidden p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors">
                     <List size={24}/>
                 </button>
-
-                {/* Tombol Toggle Desktop */}
-                <button 
-                    onClick={() => setIsDesktopSidebarOpen(!isDesktopSidebarOpen)} 
-                    className="hidden md:block p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
-                    title={isDesktopSidebarOpen ? "Tutup Sidebar" : "Buka Sidebar"}
-                >
+                <button onClick={() => setIsDesktopSidebarOpen(!isDesktopSidebarOpen)} className="hidden md:block p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors">
                     <List size={24}/>
                 </button>
-
-                {/* Judul Halaman */}
                 <h2 className="font-bold text-lg text-slate-800 line-clamp-1 md:block hidden">{getHeaderTitle()}</h2>
                 <h2 className="font-bold text-md text-slate-800 md:hidden">{getHeaderTitle()}</h2>
             </div>
             
-            {/* INFORMASI USER */}
+            {/* INFO USER */}
             <div className="flex items-center gap-3">
                 <div className="text-right">
                     <p className="text-sm font-bold text-slate-700 leading-tight">{appUser.nama}</p>
-                    <p className="text-[10px] md:text-xs text-slate-500 uppercase">
-                        {appUser.role === 'user' 
-                            ? `NIP. ${appUser.nip || '-'}` 
-                            : appUser.role
-                        }
-                    </p>
+                    <p className="text-[10px] md:text-xs text-slate-500 uppercase">{appUser.role === 'user' ? `NIP. ${appUser.nip || '-'}` : appUser.role}</p>
                 </div>
                 <div className="w-9 h-9 md:w-10 md:h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-sm border border-blue-200 flex-shrink-0">
                     {appUser.nama.charAt(0)}
@@ -206,7 +164,7 @@ export default function App() {
             </div>
         </header>
 
-        {/* CONTENT AREA */}
+        {/* CONTENT AREA (ROUTER VIEW) */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 print:p-0 print:overflow-visible bg-gray-50">
             <style>{`
             @media print {
@@ -217,34 +175,60 @@ export default function App() {
             }
             `}</style>
 
-            {isManagement ? (
-            <>
-                {activeTab === 'admin_dashboard' && <AdminDashboard employees={employees} attendance={attendance} settings={settings} />}
-                {activeTab === 'input_absensi' && <AdminInputAbsensi employees={employees} attendance={attendance} />}
-                {activeTab === 'laporan_harian' && <AdminLaporanHarian employees={employees} attendance={attendance} settings={settings} holidays={holidays} />}
-                {activeTab === 'laporan_bulanan' && <AdminRekapanBulanan employees={employees} attendance={attendance} settings={settings} user={appUser} />}
-                {activeTab === 'rekapan_tahunan' && <AdminRekapanTahunan employees={employees} attendance={attendance} settings={settings} />}
-                {activeTab === 'cetak_manual' && <AdminCetakAbsensiManual employees={employees} settings={settings} holidays={holidays} />} 
-                {activeTab === 'manajemen_surat' && <AdminManajemenSurat employees={employees} settings={settings} user={appUser} />}
-                {activeTab === 'terima_absensi' && <AdminTerimaAbsensi employees={employees} attendance={attendance} />}
-                {activeTab === 'data_pegawai' && <AdminDataPegawai employees={employees} currentUser={appUser} />}
-                {activeTab === 'settings' && <AdminSettings settings={settings} holidays={holidays} employees={employees} user={appUser} />}
-            </>
-            ) : (
-            <>
-                {activeTab === 'admin_dashboard' && <AdminDashboard employees={employees} attendance={attendance} settings={settings} />}
-                {activeTab === 'user_absensi' && <UserAbsensi user={appUser} attendance={attendance} holidays={holidays} settings={settings} />}
-                {activeTab === 'user_laporan_status' && <UserLaporanStatus user={appUser} attendance={attendance} />}
+            <Routes>
+                {/* --- HALAMAN UMUM --- */}
+                <Route path="/" element={<AdminDashboard employees={employees} attendance={attendance} settings={settings} />} />
+
+                {/* --- HALAMAN ADMIN/OPERATOR --- */}
+                {isManagement ? (
+                    <>
+                        <Route path="/verifikasi-absensi" element={<AdminTerimaAbsensi employees={employees} attendance={attendance} />} />
+                        <Route path="/input-absensi" element={<AdminInputAbsensi employees={employees} attendance={attendance} />} />
+                        <Route path="/laporan-harian" element={<AdminLaporanHarian employees={employees} attendance={attendance} settings={settings} holidays={holidays} />} />
+                        
+                        {/* PERBAIKAN DI SINI: MENAMBAHKAN props holidays={holidays} */}
+                        <Route 
+                            path="/laporan-bulanan" 
+                            element={<AdminRekapanBulanan employees={employees} attendance={attendance} settings={settings} user={appUser} holidays={holidays} />} 
+                        />
+                        
+                        <Route path="/rekapan-tahunan" element={<AdminRekapanTahunan employees={employees} attendance={attendance} settings={settings} />} />
+                        <Route path="/cetak-manual" element={<AdminCetakAbsensiManual employees={employees} settings={settings} holidays={holidays} />} />
+                        <Route path="/aplikasi-surat" element={<AdminManajemenSurat employees={employees} settings={settings} user={appUser} />} />
+                        <Route path="/data-pegawai" element={<AdminDataPegawai employees={employees} currentUser={appUser} />} />
+                        <Route path="/settings" element={<AdminSettings settings={settings} holidays={holidays} employees={employees} user={appUser} />} />
+                    </>
+                ) : (
+                    /* --- HALAMAN USER BIASA --- */
+                    <>
+                        {/* Jika user biasa akses halaman admin, redirect ke home */}
+                        <Route path="/input-absensi" element={<Navigate to="/" />} />
+                        
+                        <Route path="/absensi-mandiri" element={<UserAbsensi user={appUser} attendance={attendance} holidays={holidays} settings={settings} />} />
+                        <Route path="/status-absensi" element={<UserLaporanStatus user={appUser} attendance={attendance} />} />
+                        
+                        <Route path="/laporan-harian" element={<AdminLaporanHarian employees={employees} attendance={attendance} settings={settings} isUserView={true} holidays={holidays} />} />
+                        <Route path="/laporan-bulanan" element={<UserRekapan user={appUser} attendance={attendance} settings={settings} employees={employees} />} />
+                        <Route path="/rekapan-tahunan" element={<AdminRekapanTahunan employees={employees} attendance={attendance} settings={settings} user={appUser} />} />
+                        
+                        <Route path="/cetak-manual" element={<AdminCetakAbsensiManual employees={employees} settings={settings} holidays={holidays} />} />
+                    </>
+                )}
                 
-                {activeTab === 'user_laporan_harian' && <AdminLaporanHarian employees={employees} attendance={attendance} settings={settings} isUserView={true} holidays={holidays} />}
-                {activeTab === 'user_rekapan' && <UserRekapan user={appUser} attendance={attendance} settings={settings} employees={employees} />}
-                {activeTab === 'rekapan_tahunan' && <AdminRekapanTahunan employees={employees} attendance={attendance} settings={settings} user={appUser} />}
-                
-                {activeTab === 'cetak_manual' && <AdminCetakAbsensiManual employees={employees} settings={settings} holidays={holidays} />}
-            </>
-            )}
+                {/* Fallback jika halaman tidak ditemukan */}
+                <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
         </div>
       </main>
     </div>
   );
+}
+
+// === EXPORT DEFAULT: WRAPPER UTAMA ===
+export default function App() {
+    return (
+        <BrowserRouter>
+            <MainContent />
+        </BrowserRouter>
+    );
 }

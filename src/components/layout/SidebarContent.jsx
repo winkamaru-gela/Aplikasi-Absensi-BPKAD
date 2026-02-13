@@ -1,29 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom'; // IMPORT HOOKS ROUTER
 import { 
-  LayoutDashboard, 
-  Users, 
-  FileText, 
-  Settings, 
-  LogOut, 
-  CheckSquare, 
-  FileCheck, 
-  ClipboardList, 
-  Printer, 
-  Mail, 
-  CalendarRange, 
-  ChevronDown, 
-  ChevronRight, 
-  ShieldCheck, 
-  BarChart3, 
-  Sliders, 
-  PanelLeftClose, 
-  X 
+  LayoutDashboard, Users, FileText, Settings, LogOut, CheckSquare, 
+  FileCheck, ClipboardList, Printer, Mail, CalendarRange, ChevronDown, 
+  ShieldCheck, BarChart3, Sliders, PanelLeftClose, X 
 } from 'lucide-react';
 
 export default function SidebarContent({ 
   user, 
-  activeTab, 
-  setActiveTab, 
   onLogout, 
   settings, 
   pendingCount,
@@ -31,9 +15,12 @@ export default function SidebarContent({
   setIsDesktopSidebarOpen,
   setIsMobileMenuOpen
 }) {
+  const navigate = useNavigate(); // Hook untuk pindah halaman
+  const location = useLocation(); // Hook untuk tahu URL saat ini
+  
   const isManagement = ['admin', 'operator', 'pengelola'].includes(user.role);
   
-  // State untuk mengontrol dropdown grup menu
+  // State dropdown grup
   const [openGroups, setOpenGroups] = useState({
     manajemen: true,
     laporan: true,
@@ -45,24 +32,26 @@ export default function SidebarContent({
     setOpenGroups(prev => ({ ...prev, [group]: !prev[group] }));
   };
 
+  // Helper untuk mengecek apakah menu sedang aktif berdasarkan URL
+  const isActive = (path) => location.pathname === path;
+
   /**
-   * Komponen NavItem: Link menu tunggal
+   * Komponen NavItem: Menerima 'path' (URL) bukan ID lagi
    */
-  const NavItem = ({ id, icon: Icon, label, badge, isSubItem = false }) => (
+  const NavItem = ({ path, icon: Icon, label, badge, isSubItem = false }) => (
     <button 
       onClick={() => {
-        setActiveTab(id);
-        // Tutup menu mobile saat item diklik
+        navigate(path); // Pindah URL
         if (window.innerWidth < 768) setIsMobileMenuOpen(false);
       }} 
       className={`w-full flex items-center p-3 rounded-xl transition-all duration-300 justify-between group/item ${
-        activeTab === id 
+        isActive(path)
           ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40 translate-x-1' 
           : 'hover:bg-slate-800 text-slate-400 hover:text-white'
       } text-sm`}
     >
       <div className="flex items-center min-w-0">
-        <Icon size={20} className={`mr-3 flex-shrink-0 transition-colors ${activeTab === id ? 'text-white' : 'group-hover/item:text-blue-400'}`} /> 
+        <Icon size={20} className={`mr-3 flex-shrink-0 transition-colors ${isActive(path) ? 'text-white' : 'group-hover/item:text-blue-400'}`} /> 
         <span className="font-semibold break-words text-left">{label}</span>
       </div>
       {badge > 0 && (
@@ -73,9 +62,6 @@ export default function SidebarContent({
     </button>
   );
 
-  /**
-   * Komponen GroupHeader: Header dropdown
-   */
   const GroupHeader = ({ id, label, icon: Icon }) => {
     const isOpen = openGroups[id];
     return (
@@ -101,10 +87,6 @@ export default function SidebarContent({
        
        {/* HEADER: Profil & Kontrol Sidebar */}
        <div className="p-6 bg-slate-950/50 border-b border-slate-800 relative group/header">
-          
-          {/* BAGIAN TOMBOL CLOSE DIHAPUS SESUAI PERMINTAAN */}
-          {/* User sekarang menutup menu dengan klik area kosong (Backdrop) */}
-
           <div className="flex items-center gap-4 mb-4">
              <div className="relative flex-shrink-0">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center font-bold text-xl shadow-xl border border-blue-400/20 text-white transform transition-transform hover:scale-105">
@@ -113,7 +95,6 @@ export default function SidebarContent({
                 <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-slate-900 rounded-full"></div>
              </div>
              
-             {/* BAGIAN PROFIL */}
              <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm text-slate-100 leading-tight break-words whitespace-normal">
                    {user.nama}
@@ -128,15 +109,15 @@ export default function SidebarContent({
        {/* BODY: Navigasi Utama */}
        <nav className="flex-1 overflow-y-auto p-4 space-y-2 custom-sidebar-scroll scroll-smooth">
           
-          <NavItem id="admin_dashboard" icon={LayoutDashboard} label="Dashboard" />
+          <NavItem path="/" icon={LayoutDashboard} label="Dashboard" />
 
           {isManagement ? (
              <div className="pt-2 space-y-4">
                
                {/* MENU TUNGGAL */}
                <div className="animate-in fade-in slide-in-from-left-2 duration-300 space-y-2">
-                  <NavItem id="terima_absensi" icon={FileCheck} label="Verifikasi Absensi" badge={pendingCount} />
-                  <NavItem id="input_absensi" icon={CheckSquare} label="Input Absensi" />
+                  <NavItem path="/verifikasi-absensi" icon={FileCheck} label="Verifikasi Absensi" badge={pendingCount} />
+                  <NavItem path="/input-absensi" icon={CheckSquare} label="Input Absensi" />
                </div>
 
                {/* GRUP REKAPAN ABSENSI */}
@@ -144,9 +125,9 @@ export default function SidebarContent({
                  <GroupHeader id="laporan" label="Rekapan Absensi" icon={BarChart3} />
                  {openGroups.laporan && (
                    <div className="space-y-1 mt-1 ml-4 border-l-2 border-slate-800 pl-2 animate-in slide-in-from-top-2 duration-300">
-                      <NavItem id="laporan_harian" icon={FileText} label="Laporan Harian" isSubItem />
-                      <NavItem id="laporan_bulanan" icon={ClipboardList} label="Rekapan Bulanan" isSubItem />
-                      <NavItem id="rekapan_tahunan" icon={CalendarRange} label="Rekapan Tahunan" isSubItem />
+                      <NavItem path="/laporan-harian" icon={FileText} label="Laporan Harian" isSubItem />
+                      <NavItem path="/laporan-bulanan" icon={ClipboardList} label="Rekapan Bulanan" isSubItem />
+                      <NavItem path="/rekapan-tahunan" icon={CalendarRange} label="Rekapan Tahunan" isSubItem />
                    </div>
                  )}
                </div>
@@ -156,14 +137,14 @@ export default function SidebarContent({
                  <GroupHeader id="manajemen" label="Manajemen" icon={ShieldCheck} />
                  {openGroups.manajemen && (
                    <div className="space-y-1 mt-1 ml-4 border-l-2 border-slate-800 pl-2 animate-in slide-in-from-top-2 duration-300">
-                      <NavItem id="manajemen_surat" icon={Mail} label="Aplikasi Surat" isSubItem />
+                      <NavItem path="/aplikasi-surat" icon={Mail} label="Aplikasi Surat" isSubItem />
                    </div>
                  )}
                </div>
 
                {/* MENU MANDIRI */}
                <div className="animate-in fade-in slide-in-from-left-2 duration-700">
-                  <NavItem id="cetak_manual" icon={Printer} label="Cetak Absensi Manual" />
+                  <NavItem path="/cetak-manual" icon={Printer} label="Cetak Absensi Manual" />
                </div>
 
                {/* GRUP PENGATURAN */}
@@ -171,8 +152,8 @@ export default function SidebarContent({
                  <GroupHeader id="pengaturan" label="Pengaturan" icon={Sliders} />
                  {openGroups.pengaturan && (
                    <div className="space-y-1 mt-1 ml-4 border-l-2 border-slate-800 pl-2 animate-in slide-in-from-top-2 duration-300">
-                      <NavItem id="data_pegawai" icon={Users} label="Data Pegawai" isSubItem />
-                      <NavItem id="settings" icon={Settings} label="Konfigurasi" isSubItem />
+                      <NavItem path="/data-pegawai" icon={Users} label="Data Pegawai" isSubItem />
+                      <NavItem path="/settings" icon={Settings} label="Konfigurasi" isSubItem />
                    </div>
                  )}
                </div>
@@ -180,23 +161,22 @@ export default function SidebarContent({
           ) : (
              /* TAMPILAN USER BIASA */
              <div className="pt-2 space-y-1 animate-in fade-in duration-500">
-                <NavItem id="user_absensi" icon={CheckSquare} label="Absensi Mandiri" />
-                <NavItem id="user_laporan_status" icon={FileCheck} label="Status Absensi" />
+                <NavItem path="/absensi-mandiri" icon={CheckSquare} label="Absensi Mandiri" />
+                <NavItem path="/status-absensi" icon={FileCheck} label="Status Absensi" />
 
-                {/* GRUP REKAPAN ABSENSI (User) */}
                 <div className="pt-2 animate-in fade-in slide-in-from-left-2 duration-500">
                    <GroupHeader id="userRekapan" label="Rekapan Absensi" icon={BarChart3} />
                    {openGroups.userRekapan && (
                       <div className="space-y-1 mt-1 ml-4 border-l-2 border-slate-800 pl-2 animate-in slide-in-from-top-2 duration-300">
-                         <NavItem id="user_laporan_harian" icon={FileText} label="Laporan Harian" isSubItem />
-                         <NavItem id="user_rekapan" icon={ClipboardList} label="Rekapan Bulanan" isSubItem />
-                         <NavItem id="rekapan_tahunan" icon={CalendarRange} label="Rekapan Tahunan" isSubItem />
+                         <NavItem path="/laporan-harian" icon={FileText} label="Laporan Harian" isSubItem />
+                         <NavItem path="/laporan-bulanan" icon={ClipboardList} label="Rekapan Bulanan" isSubItem />
+                         <NavItem path="/rekapan-tahunan" icon={CalendarRange} label="Rekapan Tahunan" isSubItem />
                       </div>
                    )}
                 </div>
 
                 <div className="pt-2">
-                   <NavItem id="cetak_manual" icon={Printer} label="Cetak Absensi Manual" />
+                   <NavItem path="/cetak-manual" icon={Printer} label="Cetak Absensi Manual" />
                 </div>
              </div>
           )}
@@ -214,25 +194,16 @@ export default function SidebarContent({
           
           <div className="flex justify-center items-center gap-2 opacity-20 hover:opacity-50 transition-opacity">
              <span className="w-1 h-1 rounded-full bg-slate-400"></span>
-             <p className="text-[8px] font-black uppercase tracking-[0.4em] text-slate-400 italic">v1.9.2 Stable</p>
+             <p className="text-[8px] font-black uppercase tracking-[0.4em] text-slate-400 italic">v2.0 Router</p>
              <span className="w-1 h-1 rounded-full bg-slate-400"></span>
           </div>
        </div>
 
        <style>{`
-          .custom-sidebar-scroll::-webkit-scrollbar {
-            width: 4px;
-          }
-          .custom-sidebar-scroll::-webkit-scrollbar-track {
-            background: transparent;
-          }
-          .custom-sidebar-scroll::-webkit-scrollbar-thumb {
-            background: #1e293b;
-            border-radius: 10px;
-          }
-          .custom-sidebar-scroll::-webkit-scrollbar-thumb:hover {
-            background: #334155;
-          }
+          .custom-sidebar-scroll::-webkit-scrollbar { width: 4px; }
+          .custom-sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+          .custom-sidebar-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+          .custom-sidebar-scroll::-webkit-scrollbar-thumb:hover { background: #334155; }
        `}</style>
     </div>
   );

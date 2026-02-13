@@ -1,12 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Printer, FileDown, Search, X, ChevronDown } from 'lucide-react';
+import { Printer, FileDown, Search, X, ChevronDown, UserCheck } from 'lucide-react';
 import { DEFAULT_LOGO_URL } from '../../utils/helpers';
 import { getYearlyStats } from '../../utils/statistics';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
-// Tambahkan prop 'user' disini
 export default function AdminRekapanTahunan({ employees, attendance, settings, user }) {
-  const [year, setYear] = useState(new Date().getFullYear().toString());
+  // --- 1. LOGIKA TAHUN DINAMIS ---
+  const startYear = 2024;
+  const currentYear = new Date().getFullYear();
+  const yearsList = [];
+  for (let y = startYear; y <= currentYear + 5; y++) {
+      yearsList.push(y);
+  }
+
+  // State
+  const [year, setYear] = useState(currentYear.toString());
   const [selectedUserId, setSelectedUserId] = useState('');
   
   // State untuk Pencarian Pegawai
@@ -21,45 +30,41 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
   // State untuk Orientasi Cetak
   const [printOrientation, setPrintOrientation] = useState('landscape');
 
-  // --- LOGIKA BARU: Cek apakah User Biasa atau Admin ---
   const isUserMode = user && user.role === 'user';
 
-  // Effect: Jika User Mode, otomatis set selectedUserId ke user yang login
   useEffect(() => {
-     if (isUserMode) {
-        setSelectedUserId(user.id);
-     }
+      if (isUserMode) {
+         setSelectedUserId(user.id);
+      }
   }, [isUserMode, user]);
 
-  // Filter hanya pegawai (user) dan urutkan
   const sortedEmployees = employees
     .filter(e => e.role === 'user')
     .sort((a, b) => (parseInt(a.no) || 999) - (parseInt(b.no) || 999));
 
-  // Filter list pegawai berdasarkan pencarian
   const filteredEmployees = sortedEmployees.filter(emp => 
     emp.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (emp.nip && emp.nip.includes(searchTerm)) ||
     (emp.no && emp.no.toString().includes(searchTerm))
   );
 
-  // Ambil data pegawai terpilih
   const selectedEmployee = sortedEmployees.find(e => e.id === selectedUserId);
 
-  // --- LOGIKA MENCARI SEKRETARIS OTOMATIS ---
   const secretary = employees.find(e => 
     e.jabatan && e.jabatan.toLowerCase().includes('sekretaris') && !e.jabatan.toLowerCase().includes('staf')
   );
 
-  // Ambil Statistik Tahunan jika user sudah dipilih
   const yearlyData = selectedEmployee ? getYearlyStats(year, attendance, selectedUserId) : [];
 
-  // Effect: Menutup dropdown jika klik di luar
+  const getFormattedDate = () => {
+    return new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsDropdownOpen(false);
-        if (selectedEmployee && !isUserMode) { // Hanya update search term jika bukan user mode
+        if (selectedEmployee && !isUserMode) { 
             setSearchTerm(`${selectedEmployee.no}. ${selectedEmployee.nama}`);
         } else if (!selectedEmployee) {
             setSearchTerm('');
@@ -84,94 +89,251 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
       setIsDropdownOpen(true);
   };
 
-  // --- EXPORT EXCEL ---
-  const handleExportExcel = () => {
+  // --- FUNGSI EXPORT EXCEL ---
+  const handleExportExcel = async () => {
     if (!selectedEmployee) return alert("Pilih pegawai terlebih dahulu");
 
-    // Definisikan Header
-    const headerRows = [
-      [
-        "No", "Bulan", 
-        "Hadir", "",  
-        "Sakit", "",  
-        "Izin", "",   
-        "Cuti", "",   
-        "DL", "",     
-        "Total Hadir"
-      ],
-      [
-        "", "",       
-        "P", "S",     
-        "P", "S",     
-        "P", "S",     
-        "P", "S",     
-        "P", "S",     
-        ""            
-      ]
-    ];
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Rekapan Tahunan');
 
-    // Data Baris
-    const dataRows = yearlyData.map((data, i) => {
-        const { stats } = data;
-        return [
-            i + 1,
-            data.monthName,
-            stats.Hadir.p,
-            stats.Hadir.s,
-            stats.Sakit.p,
-            stats.Sakit.s,
-            stats.Izin.p,
-            stats.Izin.s,
-            stats.Cuti.p,
-            stats.Cuti.s,
-            stats['Dinas Luar'].p,
-            stats['Dinas Luar'].s,
-            data.totalHadir
-        ];
+    const columns = [
+        { header: '', width: 5 },
+        { header: '', width: 20 }, 
+    ];
+    for(let i=0; i<11; i++) columns.push({ header: '', width: 8 });
+    
+    worksheet.columns = columns;
+    const lastColIndex = 13;
+
+    try {
+        if (settings.logoUrl) {
+            const response = await fetch(settings.logoUrl);
+            const blob = await response.blob();
+            const buffer = await blob.arrayBuffer();
+            const imageId = workbook.addImage({ buffer: buffer, extension: 'png' });
+            worksheet.addImage(imageId, { tl: { col: 0.2, row: 0.2 }, ext: { width: 80, height: 80 } });
+        }
+    } catch (error) { console.warn("Gagal memuat logo:", error); }
+
+    worksheet.mergeCells(1, 2, 1, lastColIndex);
+    const row1 = worksheet.getCell(1, 2);
+    row1.value = (settings.parentAgency || '').toUpperCase();
+    row1.font = { name: 'Arial', size: 14, bold: true };
+    row1.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    worksheet.mergeCells(2, 2, 2, lastColIndex);
+    const row2 = worksheet.getCell(2, 2);
+    row2.value = (settings.opdName || '').toUpperCase();
+    row2.font = { name: 'Arial', size: 16, bold: true };
+    row2.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    worksheet.mergeCells(3, 2, 3, lastColIndex);
+    const row3 = worksheet.getCell(3, 2);
+    row3.value = settings.address || '';
+    row3.font = { name: 'Arial', size: 10, italic: true };
+    row3.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    for(let c = 1; c <= lastColIndex; c++) {
+        worksheet.getCell(4, c).border = { bottom: { style: 'double' } };
+    }
+    worksheet.addRow([]);
+
+    worksheet.mergeCells(6, 1, 6, lastColIndex);
+    const row6 = worksheet.getCell(6, 1);
+    row6.value = `REKAPITULASI ABSENSI TAHUNAN`;
+    row6.font = { name: 'Arial', size: 12, bold: true, underline: true };
+    row6.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    worksheet.mergeCells(7, 1, 7, lastColIndex);
+    const row7 = worksheet.getCell(7, 1);
+    row7.value = `PERIODE TAHUN: ${year}`;
+    row7.font = { name: 'Arial', size: 10, bold: true };
+    row7.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    worksheet.addRow([]);
+
+    const infoRowStart = 9;
+    worksheet.mergeCells(infoRowStart, 1, infoRowStart, 2);
+    worksheet.getCell(infoRowStart, 1).value = `Nama Pegawai : ${selectedEmployee.nama}`;
+    worksheet.getCell(infoRowStart, 1).font = { bold: true };
+
+    worksheet.mergeCells(infoRowStart, 8, infoRowStart, 10);
+    worksheet.getCell(infoRowStart, 8).value = `Status : ${selectedEmployee.statusPegawai || '-'}`;
+    worksheet.getCell(infoRowStart, 8).font = { bold: true };
+
+    worksheet.mergeCells(infoRowStart + 1, 1, infoRowStart + 1, 2);
+    worksheet.getCell(infoRowStart + 1, 1).value = `NIP : ${selectedEmployee.nip || '-'}`;
+    worksheet.getCell(infoRowStart + 1, 1).font = { bold: true };
+
+    worksheet.mergeCells(infoRowStart + 1, 8, infoRowStart + 1, 10);
+    worksheet.getCell(infoRowStart + 1, 8).value = `Jabatan : ${selectedEmployee.jabatan || '-'}`;
+    worksheet.getCell(infoRowStart + 1, 8).font = { bold: true };
+
+    worksheet.addRow([]);
+
+    const hRow = 12;
+    const subHRow = 13;
+
+    worksheet.mergeCells(hRow, 1, subHRow, 1); worksheet.getCell(hRow, 1).value = "No";
+    worksheet.mergeCells(hRow, 2, subHRow, 2); worksheet.getCell(hRow, 2).value = "Bulan";
+    
+    const categories = ['Hadir', 'Sakit', 'Izin', 'Cuti', 'DL'];
+    categories.forEach((cat, idx) => {
+        const startCol = 3 + (idx * 2);
+        worksheet.mergeCells(hRow, startCol, hRow, startCol + 1);
+        worksheet.getCell(hRow, startCol).value = cat;
     });
 
-    // Baris Total
-    const totalRow = [
-        "", "TOTAL TAHUNAN",
-        yearlyData.reduce((acc, curr) => acc + curr.stats.Hadir.p, 0),
-        yearlyData.reduce((acc, curr) => acc + curr.stats.Hadir.s, 0),
-        yearlyData.reduce((acc, curr) => acc + curr.stats.Sakit.p, 0),
-        yearlyData.reduce((acc, curr) => acc + curr.stats.Sakit.s, 0),
-        yearlyData.reduce((acc, curr) => acc + curr.stats.Izin.p, 0),
-        yearlyData.reduce((acc, curr) => acc + curr.stats.Izin.s, 0),
-        yearlyData.reduce((acc, curr) => acc + curr.stats.Cuti.p, 0),
-        yearlyData.reduce((acc, curr) => acc + curr.stats.Cuti.s, 0),
-        yearlyData.reduce((acc, curr) => acc + curr.stats['Dinas Luar'].p, 0),
-        yearlyData.reduce((acc, curr) => acc + curr.stats['Dinas Luar'].s, 0),
-        yearlyData.reduce((acc, curr) => acc + curr.totalHadir, 0)
+    worksheet.mergeCells(hRow, 13, subHRow, 13); worksheet.getCell(hRow, 13).value = "Total";
+
+    const colors = ['FFC6EFCE', 'FFFFEB9C', 'FFB3C6E7', 'FFE2C6E6', 'FFF7CBAC'];
+    for (let i = 0; i < 5; i++) {
+        const startCol = 3 + (i * 2);
+        const cellP = worksheet.getCell(subHRow, startCol);
+        cellP.value = "Pagi"; 
+        cellP.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors[i] } };
+        const cellS = worksheet.getCell(subHRow, startCol + 1);
+        cellS.value = "Sore"; 
+        cellS.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors[i] } };
+    }
+
+    for (let r = hRow; r <= subHRow; r++) {
+        for (let c = 1; c <= lastColIndex; c++) {
+            const cell = worksheet.getCell(r, c);
+            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.font = { bold: true };
+            if (!cell.fill) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+        }
+    }
+
+    let currentRow = 14;
+    yearlyData.forEach((data, idx) => {
+        const row = worksheet.getRow(currentRow);
+        row.getCell(1).value = idx + 1;
+        row.getCell(2).value = data.monthName;
+        const stats = data.stats;
+        row.getCell(3).value = stats.Hadir.p;
+        row.getCell(4).value = stats.Hadir.s;
+        row.getCell(5).value = stats.Sakit.p;
+        row.getCell(6).value = stats.Sakit.s;
+        row.getCell(7).value = stats.Izin.p;
+        row.getCell(8).value = stats.Izin.s;
+        row.getCell(9).value = stats.Cuti.p;
+        row.getCell(10).value = stats.Cuti.s;
+        row.getCell(11).value = stats['Dinas Luar'].p;
+        row.getCell(12).value = stats['Dinas Luar'].s;
+        row.getCell(13).value = data.totalHadir;
+
+        for(let c=1; c<=lastColIndex; c++) {
+            const cell = row.getCell(c);
+            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            if(c === 2) cell.alignment = { vertical: 'middle', horizontal: 'left' };
+            if(c === 13) {
+                cell.font = { bold: true };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+            }
+        }
+        currentRow++;
+    });
+
+    const totalRow = worksheet.getRow(currentRow);
+    worksheet.mergeCells(currentRow, 1, currentRow, 2);
+    totalRow.getCell(1).value = "TOTAL TAHUNAN";
+    totalRow.getCell(1).alignment = { horizontal: 'right' };
+    totalRow.getCell(1).font = { bold: true };
+
+    const sums = [
+        yearlyData.reduce((a, b) => a + b.stats.Hadir.p, 0),
+        yearlyData.reduce((a, b) => a + b.stats.Hadir.s, 0),
+        yearlyData.reduce((a, b) => a + b.stats.Sakit.p, 0),
+        yearlyData.reduce((a, b) => a + b.stats.Sakit.s, 0),
+        yearlyData.reduce((a, b) => a + b.stats.Izin.p, 0),
+        yearlyData.reduce((a, b) => a + b.stats.Izin.s, 0),
+        yearlyData.reduce((a, b) => a + b.stats.Cuti.p, 0),
+        yearlyData.reduce((a, b) => a + b.stats.Cuti.s, 0),
+        yearlyData.reduce((a, b) => a + b.stats['Dinas Luar'].p, 0),
+        yearlyData.reduce((a, b) => a + b.stats['Dinas Luar'].s, 0),
+        yearlyData.reduce((a, b) => a + b.totalHadir, 0)
     ];
 
-    const wsData = [...headerRows, ...dataRows, totalRow];
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    sums.forEach((sum, idx) => {
+        const cell = totalRow.getCell(3 + idx);
+        cell.value = sum;
+        cell.font = { bold: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+    });
 
-    // Merge Cells
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, 
-      { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, 
-      { s: { r: 0, c: 2 }, e: { r: 0, c: 3 } }, 
-      { s: { r: 0, c: 4 }, e: { r: 0, c: 5 } }, 
-      { s: { r: 0, c: 6 }, e: { r: 0, c: 7 } }, 
-      { s: { r: 0, c: 8 }, e: { r: 0, c: 9 } }, 
-      { s: { r: 0, c: 10 }, e: { r: 0, c: 11 } }, 
-      { s: { r: 0, c: 12 }, e: { r: 1, c: 12 } }, 
-      { s: { r: wsData.length - 1, c: 0 }, e: { r: wsData.length - 1, c: 1 } }
-    ];
+    for(let c=1; c<=lastColIndex; c++) {
+        totalRow.getCell(c).border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+    }
 
-    ws['!cols'] = [
-        { wch: 5 }, { wch: 15 }, 
-        { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, 
-        { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, 
-        { wch: 5 }, { wch: 5 }, { wch: 12 } 
-    ];
+    const signRow = currentRow + 3;
+    const rightStart = 9; 
+    const rightEnd = 13;
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Rekapan Tahunan");
-    XLSX.writeFile(wb, `Rekapan_Tahunan_${selectedEmployee.nama.replace(/\s+/g,'_')}_${year}.xlsx`);
+    if (showSecretary) {
+        worksheet.mergeCells(signRow, 2, signRow, 5);
+        worksheet.getCell(signRow, 2).value = showLeader ? "Mengetahui," : "";
+        worksheet.getCell(signRow, 2).alignment = { horizontal: 'center' };
+
+        worksheet.mergeCells(signRow + 1, 2, signRow + 1, 5);
+        const cellJob = worksheet.getCell(signRow + 1, 2);
+        cellJob.value = showLeader ? (settings.kepalaJabatan || '') : (secretary ? secretary.jabatan : '');
+        cellJob.font = { bold: true };
+        cellJob.alignment = { horizontal: 'center' };
+
+        worksheet.mergeCells(signRow + 6, 2, signRow + 6, 5);
+        const cellName = worksheet.getCell(signRow + 6, 2);
+        cellName.value = showLeader ? (settings.kepalaName || '').toUpperCase() : (secretary ? (secretary.nama || '').toUpperCase() : '');
+        cellName.font = { bold: true, underline: true };
+        cellName.alignment = { horizontal: 'center' };
+
+        worksheet.mergeCells(signRow + 7, 2, signRow + 7, 5);
+        const cellNip = worksheet.getCell(signRow + 7, 2);
+        cellNip.value = showLeader ? `NIP. ${settings.kepalaNip}` : (secretary ? `NIP. ${secretary.nip}` : '');
+        cellNip.alignment = { horizontal: 'center' };
+    }
+
+    if (showLeader || (!showLeader && showSecretary)) {
+        worksheet.mergeCells(signRow, rightStart, signRow, rightEnd);
+        const dateCell = worksheet.getCell(signRow, rightStart);
+        dateCell.value = `${settings.titimangsa || 'Tempat'}, ${getFormattedDate()}`;
+        dateCell.alignment = { horizontal: 'center' };
+
+        worksheet.mergeCells(signRow + 1, rightStart, signRow + 1, rightEnd);
+        const cellJobR = worksheet.getCell(signRow + 1, rightStart);
+        if (showSecretary && showLeader) {
+             cellJobR.value = secretary ? secretary.jabatan : 'Sekretaris';
+        } else {
+             cellJobR.value = settings.kepalaJabatan || 'Kepala Dinas';
+        }
+        cellJobR.font = { bold: true };
+        cellJobR.alignment = { horizontal: 'center' };
+
+        worksheet.mergeCells(signRow + 6, rightStart, signRow + 6, rightEnd);
+        const cellNameR = worksheet.getCell(signRow + 6, rightStart);
+        if (showSecretary && showLeader) {
+            cellNameR.value = secretary ? (secretary.nama).toUpperCase() : '................';
+        } else {
+            cellNameR.value = (settings.kepalaName || '').toUpperCase();
+        }
+        cellNameR.font = { bold: true, underline: true };
+        cellNameR.alignment = { horizontal: 'center' };
+
+        worksheet.mergeCells(signRow + 7, rightStart, signRow + 7, rightEnd);
+        const cellNipR = worksheet.getCell(signRow + 7, rightStart);
+        if (showSecretary && showLeader) {
+            cellNipR.value = secretary ? `NIP. ${secretary.nip}` : '................';
+        } else {
+            cellNipR.value = `NIP. ${settings.kepalaNip}`;
+        }
+        cellNipR.alignment = { horizontal: 'center' };
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `Rekapan_Tahunan_${selectedEmployee.nama.replace(/\s+/g,'_')}_${year}.xlsx`);
   };
 
   return (
@@ -179,7 +341,19 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
        <style>{`
          @media print {
            @page { size: ${printOrientation}; margin: 10mm; }
-           body { -webkit-print-color-adjust: exact; }
+           body { -webkit-print-color-adjust: exact; background-color: white !important; }
+           
+           /* MENGHILANGKAN GARIS TEPI/SHADOW SAAT PRINT */
+           .print-clean {
+              box-shadow: none !important;
+              border: none !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              border-radius: 0 !important;
+           }
+           
+           /* Sembunyikan elemen non-print */
+           .no-print { display: none !important; }
          }
        `}</style>
 
@@ -189,14 +363,18 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
             <div className="flex gap-4 items-end flex-wrap">
                 <div>
                     <label className="text-xs font-bold block mb-1">Pilih Tahun</label>
-                    <select value={year} onChange={e=>setYear(e.target.value)} className="border p-2 rounded w-24 bg-white focus:ring-2 focus:ring-blue-500 outline-none">
-                    <option value="2024">2024</option>
-                    <option value="2025">2025</option>
-                    <option value="2026">2026</option>
+                    <select 
+                        value={year} 
+                        onChange={e => setYear(e.target.value)} 
+                        className="border p-2 rounded w-24 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                        {yearsList.map(y => (
+                            <option key={y} value={y}>{y}</option>
+                        ))}
                     </select>
                 </div>
                 
-                {/* SEARCHABLE DROPDOWN (HANYA MUNCUL JIKA BUKAN USER BIASA) */}
+                {/* SEARCHABLE DROPDOWN */}
                 {!isUserMode && (
                   <div className="relative" ref={dropdownRef}>
                       <label className="text-xs font-bold block mb-1">Cari & Pilih Pegawai</label>
@@ -214,104 +392,56 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
                               onFocus={() => setIsDropdownOpen(true)}
                           />
                           <Search size={16} className="absolute left-2.5 top-3 text-slate-400 pointer-events-none"/>
-                          
                           {searchTerm ? (
-                              <button 
-                                  onClick={handleClearSelection}
-                                  className="absolute right-2 top-2.5 text-slate-400 hover:text-red-500"
-                              >
-                                  <X size={16}/> 
-                              </button>
+                              <button onClick={handleClearSelection} className="absolute right-2 top-2.5 text-slate-400 hover:text-red-500"><X size={16}/></button>
                           ) : (
                               <ChevronDown size={16} className="absolute right-2 top-3 text-slate-400 pointer-events-none"/>
                           )}
                       </div>
-
                       {isDropdownOpen && (
                           <div className="absolute z-50 w-72 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-64 overflow-y-auto">
                               {filteredEmployees.length > 0 ? (
                                   filteredEmployees.map(emp => (
-                                      <div 
-                                          key={emp.id}
-                                          onClick={() => handleSelectEmployee(emp)}
-                                          className={`p-2.5 cursor-pointer border-b border-slate-50 last:border-0 hover:bg-blue-50 transition-colors
-                                              ${selectedUserId === emp.id ? 'bg-blue-100' : ''}
-                                          `}
-                                      >
+                                      <div key={emp.id} onClick={() => handleSelectEmployee(emp)} className={`p-2.5 cursor-pointer border-b border-slate-50 hover:bg-blue-50 ${selectedUserId === emp.id ? 'bg-blue-100' : ''}`}>
                                           <div className="font-bold text-sm text-slate-800">{emp.no}. {emp.nama}</div>
-                                          <div className="text-xs text-slate-500 flex justify-between">
-                                              <span>NIP: {emp.nip || '-'}</span>
-                                              <span className="italic">{emp.jabatan}</span>
-                                          </div>
+                                          <div className="text-xs text-slate-500 flex justify-between"><span>NIP: {emp.nip || '-'}</span><span className="italic">{emp.jabatan}</span></div>
                                       </div>
                                   ))
-                              ) : (
-                                  <div className="p-4 text-center text-sm text-slate-500 italic">
-                                      Pegawai tidak ditemukan.
-                                  </div>
-                              )}
+                              ) : <div className="p-4 text-center text-sm text-slate-500 italic">Pegawai tidak ditemukan.</div>}
                           </div>
                       )}
                   </div>
                 )}
                 
-                {/* JIKA USER MODE, TAMPILKAN INFO SINGKAT */}
-                {isUserMode && selectedEmployee && (
-                   <div className="px-4 py-2 bg-blue-50 rounded border border-blue-200">
-                      <p className="text-xs font-bold text-blue-800 uppercase">Rekapan Anda</p>
-                      <p className="text-sm font-bold">{selectedEmployee.nama}</p>
-                   </div>
-                )}
-
                 <div>
                     <label className="text-xs font-bold block mb-1">Orientasi Cetak</label>
-                    <select 
-                        value={printOrientation} 
-                        onChange={(e) => setPrintOrientation(e.target.value)} 
-                        className="border p-2 rounded w-40 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                    >
-                        <option value="landscape">Landscape (Mendatar)</option>
-                        <option value="portrait">Portrait (Tegak)</option>
+                    <select value={printOrientation} onChange={(e) => setPrintOrientation(e.target.value)} className="border p-2 rounded w-40 bg-white outline-none">
+                        <option value="landscape">Landscape</option>
+                        <option value="portrait">Portrait</option>
                     </select>
                 </div>
             </div>
             
             <div className="flex gap-2">
-                <button onClick={handleExportExcel} disabled={!selectedUserId} className="bg-green-600 text-white px-4 py-2 rounded flex items-center hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed shadow-sm transition-all hover:scale-105 active:scale-95">
-                    <FileDown size={16} className="mr-2"/> Export Excel
-                </button>
-                <button onClick={()=>window.print()} disabled={!selectedUserId} className="bg-slate-800 text-white px-4 py-2 rounded flex items-center hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed shadow-sm transition-all hover:scale-105 active:scale-95">
+                <button onClick={() => window.print()} disabled={!selectedUserId} className="bg-slate-800 text-white px-4 py-2 rounded flex items-center hover:bg-black disabled:bg-gray-300 shadow-sm transition-transform hover:scale-105">
                     <Printer size={16} className="mr-2"/> Cetak
+                </button>
+                <button onClick={handleExportExcel} disabled={!selectedUserId} className="bg-green-600 text-white px-4 py-2 rounded flex items-center hover:bg-green-700 disabled:bg-gray-300 shadow-sm transition-transform hover:scale-105">
+                    <FileDown size={16} className="mr-2"/> Excel Lengkap
                 </button>
             </div>
           </div>
 
           <div className="flex gap-6 border-t pt-3">
              <span className="text-xs font-bold text-slate-500 flex items-center">Opsi Tanda Tangan:</span>
-             <label className="flex items-center gap-2 cursor-pointer text-sm">
-                <input 
-                    type="checkbox" 
-                    checked={showSecretary} 
-                    onChange={(e) => setShowSecretary(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                />
-                TTD Sekretaris
-             </label>
-             <label className="flex items-center gap-2 cursor-pointer text-sm">
-                <input 
-                    type="checkbox" 
-                    checked={showLeader} 
-                    onChange={(e) => setShowLeader(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                />
-                TTD Pimpinan
-             </label>
+             <label className="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" checked={showSecretary} onChange={(e) => setShowSecretary(e.target.checked)} className="rounded text-blue-600"/> TTD Sekretaris</label>
+             <label className="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" checked={showLeader} onChange={(e) => setShowLeader(e.target.checked)} className="rounded text-blue-600"/> TTD Pimpinan</label>
           </div>
        </div>
 
-       {/* REPORT AREA */}
+       {/* REPORT AREA (PREVIEW) - DIBERSIHKAN UNTUK PRINT */}
        {selectedEmployee ? (
-           <div className="bg-white p-8 rounded shadow print:shadow-none print:w-full">
+           <div className="bg-white p-8 rounded shadow print:shadow-none print:border-none print:m-0 print:p-0 print:w-full print:rounded-none print-clean">
               {/* KOP SURAT */}
               <div className="flex border-b-4 border-double border-black pb-4 mb-6 items-center justify-center relative">
                 <img src={settings.logoUrl || DEFAULT_LOGO_URL} className="h-20 absolute left-0" alt="logo"/>
@@ -333,16 +463,12 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
                   <table className="w-full">
                       <tbody>
                           <tr>
-                              <td className="font-bold w-32">Nama Pegawai</td>
-                              <td>: {selectedEmployee.nama}</td>
-                              <td className="font-bold w-32">Status</td>
-                              <td>: {selectedEmployee.statusPegawai || '-'}</td>
+                              <td className="font-bold w-32">Nama Pegawai</td><td>: {selectedEmployee.nama}</td>
+                              <td className="font-bold w-32">Status</td><td>: {selectedEmployee.statusPegawai || '-'}</td>
                           </tr>
                           <tr>
-                              <td className="font-bold">NIP</td>
-                              <td>: {selectedEmployee.nip || '-'}</td>
-                              <td className="font-bold">Jabatan</td>
-                              <td>: {selectedEmployee.jabatan}</td>
+                              <td className="font-bold">NIP</td><td>: {selectedEmployee.nip || '-'}</td>
+                              <td className="font-bold">Jabatan</td><td>: {selectedEmployee.jabatan}</td>
                           </tr>
                       </tbody>
                   </table>
@@ -354,7 +480,6 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
                     <tr className="bg-slate-100 print:bg-transparent">
                        <th className="border border-black p-1 align-middle w-10" rowSpan="2">No</th>
                        <th className="border border-black p-1 align-middle text-left w-[1%] whitespace-nowrap" rowSpan="2">Bulan</th>
-                       
                        <th className="border border-black p-1 text-center w-auto" colSpan="2">Hadir</th>
                        <th className="border border-black p-1 text-center w-auto" colSpan="2">Sakit</th>
                        <th className="border border-black p-1 text-center w-auto" colSpan="2">Izin</th>
@@ -363,20 +488,11 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
                        <th className="border border-black p-1 text-center w-16" rowSpan="2">Total Hadir</th>
                     </tr>
                     <tr className="bg-slate-50 print:bg-transparent text-[10px] uppercase text-center">
-                       <th className="border border-black p-0.5 w-auto bg-green-50 print:bg-transparent">P</th>
-                       <th className="border border-black p-0.5 w-auto bg-green-100 print:bg-transparent">S</th>
-                       
-                       <th className="border border-black p-0.5 w-auto bg-yellow-50 print:bg-transparent">P</th>
-                       <th className="border border-black p-0.5 w-auto bg-yellow-100 print:bg-transparent">S</th>
-                       
-                       <th className="border border-black p-0.5 w-auto bg-blue-50 print:bg-transparent">P</th>
-                       <th className="border border-black p-0.5 w-auto bg-blue-100 print:bg-transparent">S</th>
-                       
-                       <th className="border border-black p-0.5 w-auto bg-purple-50 print:bg-transparent">P</th>
-                       <th className="border border-black p-0.5 w-auto bg-purple-100 print:bg-transparent">S</th>
-                       
-                       <th className="border border-black p-0.5 w-auto bg-orange-50 print:bg-transparent">P</th>
-                       <th className="border border-black p-0.5 w-auto bg-orange-100 print:bg-transparent">S</th>
+                       <th className="border border-black p-0.5 bg-green-50 print:bg-transparent">Pagi</th><th className="border border-black p-0.5 bg-green-100 print:bg-transparent">Sore</th>
+                       <th className="border border-black p-0.5 bg-yellow-50 print:bg-transparent">Pagi</th><th className="border border-black p-0.5 bg-yellow-100 print:bg-transparent">Sore</th>
+                       <th className="border border-black p-0.5 bg-blue-50 print:bg-transparent">Pagi</th><th className="border border-black p-0.5 bg-blue-100 print:bg-transparent">Sore</th>
+                       <th className="border border-black p-0.5 bg-purple-50 print:bg-transparent">Pagi</th><th className="border border-black p-0.5 bg-purple-100 print:bg-transparent">Sore</th>
+                       <th className="border border-black p-0.5 bg-orange-50 print:bg-transparent">Pagi</th><th className="border border-black p-0.5 bg-orange-100 print:bg-transparent">Sore</th>
                     </tr>
                  </thead>
                  <tbody>
@@ -384,22 +500,11 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
                        <tr key={i} className="hover:bg-slate-50">
                           <td className="border border-black p-1 text-center">{i+1}</td>
                           <td className="border border-black p-1 font-bold whitespace-nowrap">{data.monthName}</td>
-                          
-                          <td className="border border-black p-1 text-center bg-green-50 print:bg-transparent">{data.stats.Hadir.p}</td>
-                          <td className="border border-black p-1 text-center bg-green-100 print:bg-transparent">{data.stats.Hadir.s}</td>
-
-                          <td className="border border-black p-1 text-center bg-yellow-50 print:bg-transparent">{data.stats.Sakit.p}</td>
-                          <td className="border border-black p-1 text-center bg-yellow-100 print:bg-transparent">{data.stats.Sakit.s}</td>
-
-                          <td className="border border-black p-1 text-center bg-blue-50 print:bg-transparent">{data.stats.Izin.p}</td>
-                          <td className="border border-black p-1 text-center bg-blue-100 print:bg-transparent">{data.stats.Izin.s}</td>
-
-                          <td className="border border-black p-1 text-center bg-purple-50 print:bg-transparent">{data.stats.Cuti.p}</td>
-                          <td className="border border-black p-1 text-center bg-purple-100 print:bg-transparent">{data.stats.Cuti.s}</td>
-
-                          <td className="border border-black p-1 text-center bg-orange-50 print:bg-transparent">{data.stats['Dinas Luar'].p}</td>
-                          <td className="border border-black p-1 text-center bg-orange-100 print:bg-transparent">{data.stats['Dinas Luar'].s}</td>
-
+                          <td className="border border-black p-1 text-center bg-green-50 print:bg-transparent">{data.stats.Hadir.p}</td><td className="border border-black p-1 text-center bg-green-100 print:bg-transparent">{data.stats.Hadir.s}</td>
+                          <td className="border border-black p-1 text-center bg-yellow-50 print:bg-transparent">{data.stats.Sakit.p}</td><td className="border border-black p-1 text-center bg-yellow-100 print:bg-transparent">{data.stats.Sakit.s}</td>
+                          <td className="border border-black p-1 text-center bg-blue-50 print:bg-transparent">{data.stats.Izin.p}</td><td className="border border-black p-1 text-center bg-blue-100 print:bg-transparent">{data.stats.Izin.s}</td>
+                          <td className="border border-black p-1 text-center bg-purple-50 print:bg-transparent">{data.stats.Cuti.p}</td><td className="border border-black p-1 text-center bg-purple-100 print:bg-transparent">{data.stats.Cuti.s}</td>
+                          <td className="border border-black p-1 text-center bg-orange-50 print:bg-transparent">{data.stats['Dinas Luar'].p}</td><td className="border border-black p-1 text-center bg-orange-100 print:bg-transparent">{data.stats['Dinas Luar'].s}</td>
                           <td className="border border-black p-1 text-center font-bold bg-slate-100 print:bg-transparent">{data.totalHadir}</td>
                        </tr>
                     ))}
@@ -407,19 +512,14 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
                         <td colSpan="2" className="border border-black p-1 text-right pr-4">TOTAL TAHUNAN</td>
                         <td className="border border-black p-1 text-center">{yearlyData.reduce((acc, curr) => acc + curr.stats.Hadir.p, 0)}</td>
                         <td className="border border-black p-1 text-center">{yearlyData.reduce((acc, curr) => acc + curr.stats.Hadir.s, 0)}</td>
-                        
                         <td className="border border-black p-1 text-center">{yearlyData.reduce((acc, curr) => acc + curr.stats.Sakit.p, 0)}</td>
                         <td className="border border-black p-1 text-center">{yearlyData.reduce((acc, curr) => acc + curr.stats.Sakit.s, 0)}</td>
-
                         <td className="border border-black p-1 text-center">{yearlyData.reduce((acc, curr) => acc + curr.stats.Izin.p, 0)}</td>
                         <td className="border border-black p-1 text-center">{yearlyData.reduce((acc, curr) => acc + curr.stats.Izin.s, 0)}</td>
-
                         <td className="border border-black p-1 text-center">{yearlyData.reduce((acc, curr) => acc + curr.stats.Cuti.p, 0)}</td>
                         <td className="border border-black p-1 text-center">{yearlyData.reduce((acc, curr) => acc + curr.stats.Cuti.s, 0)}</td>
-
                         <td className="border border-black p-1 text-center">{yearlyData.reduce((acc, curr) => acc + curr.stats['Dinas Luar'].p, 0)}</td>
                         <td className="border border-black p-1 text-center">{yearlyData.reduce((acc, curr) => acc + curr.stats['Dinas Luar'].s, 0)}</td>
-                        
                         <td className="border border-black p-1 text-center">{yearlyData.reduce((acc, curr) => acc + curr.totalHadir, 0)}</td>
                     </tr>
                  </tbody>
@@ -438,7 +538,7 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
                 {!(showSecretary && showLeader) && <div></div>}
 
                 <div className="min-w-[200px] w-auto px-4">
-                   <p className="mb-4">{settings.titimangsa || 'Bobong'}, {new Date().toLocaleDateString('id-ID', {day: 'numeric', month:'long', year:'numeric'})}</p>
+                   <p className="mb-4">{settings.titimangsa || 'Bobong'}, {getFormattedDate()}</p>
                    
                    {showSecretary && showLeader && (
                        secretary ? (
@@ -447,9 +547,7 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
                                <p className="font-bold underline whitespace-nowrap">{secretary.nama}</p>
                                <p>NIP. {secretary.nip || '-'}</p>
                            </>
-                       ) : (
-                           <div className="mt-10 italic text-gray-400 text-sm">(Data Sekretaris tidak ditemukan)</div>
-                       )
+                       ) : <div className="mt-10 italic text-gray-400 text-sm">(Data Sekretaris tidak ditemukan)</div>
                    )}
 
                    {showSecretary && !showLeader && (
@@ -459,9 +557,7 @@ export default function AdminRekapanTahunan({ employees, attendance, settings, u
                                <p className="font-bold underline whitespace-nowrap">{secretary.nama}</p>
                                <p>NIP. {secretary.nip || '-'}</p>
                            </>
-                       ) : (
-                           <div className="mt-10 italic text-gray-400 text-sm">(Data Sekretaris tidak ditemukan)</div>
-                       )
+                       ) : <div className="mt-10 italic text-gray-400 text-sm">(Data Sekretaris tidak ditemukan)</div>
                    )}
 
                    {!showSecretary && showLeader && (

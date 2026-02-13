@@ -14,10 +14,14 @@
   },
   "dependencies": {
     "@tinymce/tinymce-react": "^6.3.0",
+    "exceljs": "^4.4.0",
+    "file-saver": "^2.0.5",
     "firebase": "^12.8.0",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-router-dom": "^7.13.0",
+    "react-to-print": "^3.2.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
