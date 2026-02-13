@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, X, ChevronLeft, List, Loader2 } from 'lucide-react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'; // IMPORT UTAMA ROUTER
+// UBAH DISINI: Ganti BrowserRouter menjadi HashRouter
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'; 
 
 // --- CUSTOM HOOK (LOGIC) ---
 import { useAppData } from './hooks/useAppData';
@@ -27,7 +28,6 @@ import UserAbsensi from './components/user/UserAbsensi';
 import UserLaporanStatus from './components/user/UserLaporanStatus';
 import UserRekapan from './components/user/UserRekapan';
 
-// --- QUOTES LOADING ---
 const LOADING_QUOTES = [
   "Bekerjalah dengan hati, maka hasil akan mengikuti.",
   "Integritas adalah melakukan hal yang benar, walau tidak ada yang melihat.",
@@ -41,7 +41,6 @@ const LOADING_QUOTES = [
   "Mulai hari ini dengan semangat baru dan pikiran positif."
 ];
 
-// === KOMPONEN UTAMA (YANG DIBUNGKUS ROUTER) ===
 function MainContent() {
   const { 
     appUser, employees, attendance, settings, holidays, loading, handleAppLogin, handleAppLogout 
@@ -50,7 +49,7 @@ function MainContent() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true);
   const [loadingQuote, setLoadingQuote] = useState("");
-  const location = useLocation(); // Hook untuk cek URL aktif
+  const location = useLocation(); 
 
   useEffect(() => {
     const randomIndex = Math.floor(Math.random() * LOADING_QUOTES.length);
@@ -62,7 +61,6 @@ function MainContent() {
       setIsMobileMenuOpen(false);
   };
 
-  // Helper untuk Judul Header berdasarkan URL
   const getHeaderTitle = () => {
     const path = location.pathname;
     switch(path) {
@@ -82,7 +80,6 @@ function MainContent() {
     }
   };
 
-  // --- TAMPILAN LOADING ---
   if (loading) return (
     <div className="flex flex-col h-screen items-center justify-center bg-slate-50 px-6 font-sans">
       <div className="text-center max-w-lg">
@@ -98,18 +95,15 @@ function MainContent() {
     </div>
   );
 
-  // --- HALAMAN LOGIN ---
   if (!appUser) return <LoginPage onLogin={handleAppLogin} settings={settings} />;
 
   const isManagement = ['admin', 'operator', 'pengelola'].includes(appUser.role);
   const pendingCount = attendance.filter(l => l.statusApproval === 'pending').length;
-  // Cek untuk print layout
   const isLandscape = ['/cetak-manual', '/aplikasi-surat', '/rekapan-tahunan'].includes(location.pathname);
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col md:flex-row print:bg-white print:block print:h-auto text-slate-800 overflow-hidden font-sans">
       
-      {/* --- BACKDROP MOBILE --- */}
       {isMobileMenuOpen && (
         <div 
             className="fixed inset-0 bg-black/50 z-[60] md:hidden backdrop-blur-sm transition-opacity"
@@ -117,7 +111,6 @@ function MainContent() {
         />
       )}
 
-      {/* --- SIDEBAR --- */}
       <div id="sidebar-container" className={`
           fixed md:relative inset-y-0 left-0 z-[70] 
           w-64 bg-slate-900 text-white shadow-xl transform transition-transform duration-300 ease-in-out
@@ -136,10 +129,8 @@ function MainContent() {
          />
       </div>
       
-      {/* --- MAIN CONTENT WRAPPER --- */}
       <main id="main-content" className="flex-1 flex flex-col h-full overflow-hidden relative transition-all duration-300 w-full">
         
-        {/* HEADER */}
         <header className="bg-white shadow-sm h-16 flex items-center justify-between px-4 md:px-6 flex-shrink-0 print:hidden z-10 sticky top-0">
             <div className="flex items-center gap-3">
                 <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="md:hidden p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors">
@@ -152,7 +143,6 @@ function MainContent() {
                 <h2 className="font-bold text-md text-slate-800 md:hidden">{getHeaderTitle()}</h2>
             </div>
             
-            {/* INFO USER */}
             <div className="flex items-center gap-3">
                 <div className="text-right">
                     <p className="text-sm font-bold text-slate-700 leading-tight">{appUser.nama}</p>
@@ -164,7 +154,6 @@ function MainContent() {
             </div>
         </header>
 
-        {/* CONTENT AREA (ROUTER VIEW) */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 print:p-0 print:overflow-visible bg-gray-50">
             <style>{`
             @media print {
@@ -176,22 +165,14 @@ function MainContent() {
             `}</style>
 
             <Routes>
-                {/* --- HALAMAN UMUM --- */}
                 <Route path="/" element={<AdminDashboard employees={employees} attendance={attendance} settings={settings} />} />
 
-                {/* --- HALAMAN ADMIN/OPERATOR --- */}
                 {isManagement ? (
                     <>
                         <Route path="/verifikasi-absensi" element={<AdminTerimaAbsensi employees={employees} attendance={attendance} />} />
                         <Route path="/input-absensi" element={<AdminInputAbsensi employees={employees} attendance={attendance} />} />
                         <Route path="/laporan-harian" element={<AdminLaporanHarian employees={employees} attendance={attendance} settings={settings} holidays={holidays} />} />
-                        
-                        {/* PERBAIKAN DI SINI: MENAMBAHKAN props holidays={holidays} */}
-                        <Route 
-                            path="/laporan-bulanan" 
-                            element={<AdminRekapanBulanan employees={employees} attendance={attendance} settings={settings} user={appUser} holidays={holidays} />} 
-                        />
-                        
+                        <Route path="/laporan-bulanan" element={<AdminRekapanBulanan employees={employees} attendance={attendance} settings={settings} user={appUser} holidays={holidays} />} />
                         <Route path="/rekapan-tahunan" element={<AdminRekapanTahunan employees={employees} attendance={attendance} settings={settings} />} />
                         <Route path="/cetak-manual" element={<AdminCetakAbsensiManual employees={employees} settings={settings} holidays={holidays} />} />
                         <Route path="/aplikasi-surat" element={<AdminManajemenSurat employees={employees} settings={settings} user={appUser} />} />
@@ -199,23 +180,17 @@ function MainContent() {
                         <Route path="/settings" element={<AdminSettings settings={settings} holidays={holidays} employees={employees} user={appUser} />} />
                     </>
                 ) : (
-                    /* --- HALAMAN USER BIASA --- */
                     <>
-                        {/* Jika user biasa akses halaman admin, redirect ke home */}
                         <Route path="/input-absensi" element={<Navigate to="/" />} />
-                        
                         <Route path="/absensi-mandiri" element={<UserAbsensi user={appUser} attendance={attendance} holidays={holidays} settings={settings} />} />
                         <Route path="/status-absensi" element={<UserLaporanStatus user={appUser} attendance={attendance} />} />
-                        
                         <Route path="/laporan-harian" element={<AdminLaporanHarian employees={employees} attendance={attendance} settings={settings} isUserView={true} holidays={holidays} />} />
                         <Route path="/laporan-bulanan" element={<UserRekapan user={appUser} attendance={attendance} settings={settings} employees={employees} />} />
                         <Route path="/rekapan-tahunan" element={<AdminRekapanTahunan employees={employees} attendance={attendance} settings={settings} user={appUser} />} />
-                        
                         <Route path="/cetak-manual" element={<AdminCetakAbsensiManual employees={employees} settings={settings} holidays={holidays} />} />
                     </>
                 )}
                 
-                {/* Fallback jika halaman tidak ditemukan */}
                 <Route path="*" element={<Navigate to="/" />} />
             </Routes>
         </div>
@@ -224,11 +199,11 @@ function MainContent() {
   );
 }
 
-// === EXPORT DEFAULT: WRAPPER UTAMA ===
+// === EXPORT DEFAULT: MENGGUNAKAN HASH ROUTER UNTUK GITHUB PAGES ===
 export default function App() {
     return (
-        <BrowserRouter>
+        <HashRouter>
             <MainContent />
-        </BrowserRouter>
+        </HashRouter>
     );
 }
