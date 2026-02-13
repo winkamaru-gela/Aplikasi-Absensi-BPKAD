@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X, ChevronLeft, List } from 'lucide-react';
+import { Menu, X, ChevronLeft, List, Loader2 } from 'lucide-react';
 
 // --- CUSTOM HOOK (LOGIC) ---
 import { useAppData } from './hooks/useAppData';
@@ -26,6 +26,20 @@ import UserAbsensi from './components/user/UserAbsensi';
 import UserLaporanStatus from './components/user/UserLaporanStatus';
 import UserRekapan from './components/user/UserRekapan';
 
+// --- DAFTAR QUOTES / NASEHAT ---
+const LOADING_QUOTES = [
+  "Bekerjalah dengan hati, maka hasil akan mengikuti.",
+  "Integritas adalah melakukan hal yang benar, walau tidak ada yang melihat.",
+  "Disiplin adalah jembatan antara tujuan dan pencapaian.",
+  "Pelayanan prima dimulai dari senyuman dan ketulusan.",
+  "Waktu adalah aset berharga, gunakan untuk pengabdian terbaik.",
+  "Kerja keras tidak akan mengkhianati hasil.",
+  "Jujur, Disiplin, dan Bertanggung Jawab adalah kunci kesuksesan.",
+  "Setiap langkah kecil membawa kita lebih dekat pada tujuan besar.",
+  "Kesuksesan tidak datang dari apa yang kita lakukan sesekali, tapi apa yang kita lakukan secara konsisten.",
+  "Mulai hari ini dengan semangat baru dan pikiran positif."
+];
+
 export default function App() {
   const { 
     appUser, 
@@ -41,6 +55,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('admin_dashboard'); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true);
+  
+  // State untuk Quote Loading
+  const [loadingQuote, setLoadingQuote] = useState("");
+
+  // Effect: Pilih Quote Acak saat pertama kali load
+  useEffect(() => {
+    const randomIndex = Math.floor(Math.random() * LOADING_QUOTES.length);
+    setLoadingQuote(LOADING_QUOTES[randomIndex]);
+  }, []); // [] artinya hanya jalan sekali saat mount
 
   useEffect(() => {
      setActiveTab('admin_dashboard');
@@ -49,6 +72,7 @@ export default function App() {
   const onLogin = (u, p) => {
       const success = handleAppLogin(u, p);
       if(!success) alert('Username atau password salah!');
+      return success; // Return status login untuk animasi di LoginPage
   };
 
   const onLogout = () => {
@@ -56,10 +80,26 @@ export default function App() {
       setIsMobileMenuOpen(false);
   };
 
+  // --- TAMPILAN LOADING AWAL (DENGAN QUOTE) ---
   if (loading) return (
-    <div className="flex flex-col h-screen items-center justify-center bg-slate-100">
-      <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      <p className="mt-4 font-bold text-slate-500">Menghubungkan ke Server...</p>
+    <div className="flex flex-col h-screen items-center justify-center bg-slate-50 px-6 font-sans">
+      <div className="text-center max-w-lg">
+          <div className="relative mb-6 inline-block">
+             <div className="absolute inset-0 bg-blue-100 rounded-full animate-ping opacity-75"></div>
+             <div className="relative bg-white p-4 rounded-full shadow-md">
+                <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+             </div>
+          </div>
+          
+          {/* Quote Tampil Di Sini */}
+          <h3 className="text-lg md:text-xl font-bold text-slate-700 mb-2 leading-relaxed italic">
+            "{loadingQuote}"
+          </h3>
+          
+          <p className="text-xs text-slate-400 mt-4 uppercase tracking-widest font-semibold">
+            Memuat Data Aplikasi...
+          </p>
+      </div>
     </div>
   );
 
@@ -144,19 +184,15 @@ export default function App() {
                     <List size={24}/>
                 </button>
 
-                {/* Judul Halaman (Sembunyikan di Mobile Kecil jika sempit, atau gunakan truncate) */}
+                {/* Judul Halaman */}
                 <h2 className="font-bold text-lg text-slate-800 line-clamp-1 md:block hidden">{getHeaderTitle()}</h2>
-                {/* Judul Mobile (Lebih kecil) */}
                 <h2 className="font-bold text-md text-slate-800 md:hidden">{getHeaderTitle()}</h2>
             </div>
             
-            {/* INFORMASI USER (Tampil di Mobile & Desktop) */}
+            {/* INFORMASI USER */}
             <div className="flex items-center gap-3">
-                {/* Text Container: Tampil block (bukan hidden) */}
                 <div className="text-right">
                     <p className="text-sm font-bold text-slate-700 leading-tight">{appUser.nama}</p>
-                    
-                    {/* Logika Subtitle: NIP (User) atau Role (Admin) */}
                     <p className="text-[10px] md:text-xs text-slate-500 uppercase">
                         {appUser.role === 'user' 
                             ? `NIP. ${appUser.nip || '-'}` 
@@ -164,8 +200,6 @@ export default function App() {
                         }
                     </p>
                 </div>
-                
-                {/* Avatar: Sedikit diperkecil di mobile jika perlu, tapi w-10 biasanya oke */}
                 <div className="w-9 h-9 md:w-10 md:h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-sm border border-blue-200 flex-shrink-0">
                     {appUser.nama.charAt(0)}
                 </div>
@@ -199,7 +233,7 @@ export default function App() {
             ) : (
             <>
                 {activeTab === 'admin_dashboard' && <AdminDashboard employees={employees} attendance={attendance} settings={settings} />}
-                {activeTab === 'user_absensi' && <UserAbsensi user={appUser} attendance={attendance} holidays={holidays} />}
+                {activeTab === 'user_absensi' && <UserAbsensi user={appUser} attendance={attendance} holidays={holidays} settings={settings} />}
                 {activeTab === 'user_laporan_status' && <UserLaporanStatus user={appUser} attendance={attendance} />}
                 
                 {activeTab === 'user_laporan_harian' && <AdminLaporanHarian employees={employees} attendance={attendance} settings={settings} isUserView={true} holidays={holidays} />}

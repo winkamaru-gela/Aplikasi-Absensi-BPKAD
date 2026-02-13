@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserCheck, Trash2, Plus, Shield, Users, Printer, Save, Lock, Upload, FileDown, Edit, X, CheckSquare } from 'lucide-react';
+import { UserCheck, Trash2, Plus, Shield, Users, Printer, Save, Lock, Upload, FileDown, Edit, X, CheckSquare, Clock } from 'lucide-react';
 import { updateDoc, doc, addDoc, writeBatch, deleteDoc } from 'firebase/firestore';
 import { db, getCollectionPath } from '../../lib/firebase';
 import { formatDateIndo, DEFAULT_LOGO_URL } from '../../utils/helpers';
-import * as XLSX from 'xlsx'; // Pastikan library ini sudah terinstall
+import * as XLSX from 'xlsx'; 
 
 // ============================================================================
 // 1. MAIN COMPONENT: ADMIN SETTINGS (CONTAINER)
@@ -23,6 +23,7 @@ export default function AdminSettings({ settings, holidays, employees, user }) {
        {/* TAB NAVIGATION */}
        <div className="flex border-b mb-6 print:hidden overflow-x-auto">
           <TabButton id="setup" label="Instansi & Aplikasi" activeTab={activeTab} onClick={setActiveTab} />
+          <TabButton id="waktu" label="Waktu Absensi" activeTab={activeTab} onClick={setActiveTab} />
           <TabButton id="hari_libur" label="Hari Libur" activeTab={activeTab} onClick={setActiveTab} />
           <TabButton id="user" label="Manajemen User" activeTab={activeTab} onClick={setActiveTab} />
        </div>
@@ -31,6 +32,10 @@ export default function AdminSettings({ settings, holidays, employees, user }) {
        <div className="min-h-[400px]">
           {activeTab === 'setup' && (
              <TabSetup settings={settings} isReadOnly={isReadOnly} />
+          )}
+
+          {activeTab === 'waktu' && (
+             <TabTimeSettings settings={settings} isReadOnly={isReadOnly} />
           )}
           
           {activeTab === 'hari_libur' && (
@@ -164,14 +169,152 @@ function TabSetup({ settings, isReadOnly }) {
   );
 }
 
+// ============================================================================
+// 3. SUB-COMPONENT: TAB WAKTU ABSENSI (UPDATED WITH TIMEZONE)
+// ============================================================================
+function TabTimeSettings({ settings, isReadOnly }) {
+    const [form, setForm] = useState({
+        jamMasukAwal: settings.jamMasukAwal || '06:00',
+        batasAbsenPagi: settings.batasAbsenPagi || '10:00',
+        jamPulangAwal: settings.jamPulangAwal || '16:00',
+        batasAbsenSore: settings.batasAbsenSore || '18:00',
+        zonaWaktu: settings.zonaWaktu || 'Auto', // Tambah state Zona Waktu
+    });
+
+    useEffect(() => {
+        setForm({
+            jamMasukAwal: settings.jamMasukAwal || '06:00',
+            batasAbsenPagi: settings.batasAbsenPagi || '10:00',
+            jamPulangAwal: settings.jamPulangAwal || '16:00',
+            batasAbsenSore: settings.batasAbsenSore || '18:00',
+            zonaWaktu: settings.zonaWaktu || 'Auto',
+        });
+    }, [settings]);
+
+    const handleSave = async () => {
+        if (isReadOnly) return;
+        try {
+            await updateDoc(doc(getCollectionPath('settings'), settings.id), form);
+            alert('Pengaturan Waktu berhasil disimpan.');
+            window.location.reload(); 
+        } catch (error) {
+            console.error(error);
+            alert('Gagal menyimpan pengaturan waktu.');
+        }
+    };
+
+    return (
+        <div className="max-w-3xl space-y-6 animate-in fade-in duration-300">
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 text-sm text-blue-700">
+                <p className="font-bold flex items-center"><Clock className="mr-2" size={16}/> Panduan Waktu Absensi</p>
+                <p className="mt-1">Atur zona waktu kantor dan jam operasional absensi untuk sesi Pagi dan Sore.</p>
+            </div>
+
+            {/* --- ZONA WAKTU SETTINGS --- */}
+            <div className="border p-5 rounded-lg bg-white shadow-sm">
+                <h3 className="font-bold text-slate-800 border-b pb-2 mb-4">Zona Waktu Kantor</h3>
+                <div>
+                    <label className="font-bold text-xs uppercase block mb-1 text-slate-500">Pilih Zona Waktu</label>
+                    <select 
+                        disabled={isReadOnly}
+                        className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium text-sm"
+                        value={form.zonaWaktu} 
+                        onChange={e=>setForm({...form, zonaWaktu: e.target.value})}
+                    >
+                        <option value="Auto">Otomatis (Ikuti Jam HP Pegawai)</option>
+                        <option value="WIB">WIB (Waktu Indonesia Barat) - GMT+7</option>
+                        <option value="WITA">WITA (Waktu Indonesia Tengah) - GMT+8</option>
+                        <option value="WIT">WIT (Waktu Indonesia Timur) - GMT+9</option>
+                    </select>
+                    <p className="text-[10px] text-gray-500 mt-2 italic">
+                        * Jika memilih WIB/WITA/WIT, jam di HP pegawai akan diabaikan dan validasi akan dipaksa mengikuti waktu server sesuai zona ini.
+                    </p>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* SESI PAGI */}
+                <div className="border p-5 rounded-lg bg-slate-50 shadow-sm">
+                    <h3 className="font-bold text-slate-800 border-b pb-2 mb-4 flex items-center">
+                        <span className="w-2 h-6 bg-yellow-500 mr-2 rounded"></span>
+                        Sesi Pagi (Masuk)
+                    </h3>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="font-bold text-xs uppercase block mb-1 text-slate-500">Jam Mulai (Buka Absen)</label>
+                            <input 
+                                type="time" 
+                                disabled={isReadOnly}
+                                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 font-mono"
+                                value={form.jamMasukAwal} 
+                                onChange={e=>setForm({...form, jamMasukAwal: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="font-bold text-xs uppercase block mb-1 text-slate-500">Batas Akhir (Tutup Absen)</label>
+                            <input 
+                                type="time" 
+                                disabled={isReadOnly}
+                                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 font-mono"
+                                value={form.batasAbsenPagi} 
+                                onChange={e=>setForm({...form, batasAbsenPagi: e.target.value})}
+                            />
+                            <p className="text-[10px] text-gray-500 mt-1">Setelah jam ini, tombol absen pagi hilang.</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* SESI SORE */}
+                <div className="border p-5 rounded-lg bg-slate-50 shadow-sm">
+                    <h3 className="font-bold text-slate-800 border-b pb-2 mb-4 flex items-center">
+                        <span className="w-2 h-6 bg-blue-500 mr-2 rounded"></span>
+                        Sesi Sore (Pulang)
+                    </h3>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="font-bold text-xs uppercase block mb-1 text-slate-500">Jam Mulai (Buka Absen)</label>
+                            <input 
+                                type="time" 
+                                disabled={isReadOnly}
+                                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 font-mono"
+                                value={form.jamPulangAwal} 
+                                onChange={e=>setForm({...form, jamPulangAwal: e.target.value})}
+                            />
+                        </div>
+                        <div>
+                            <label className="font-bold text-xs uppercase block mb-1 text-slate-500">Batas Akhir (Tutup Absen)</label>
+                            <input 
+                                type="time" 
+                                disabled={isReadOnly}
+                                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 font-mono"
+                                value={form.batasAbsenSore} 
+                                onChange={e=>setForm({...form, batasAbsenSore: e.target.value})}
+                            />
+                            <p className="text-[10px] text-gray-500 mt-1">Setelah jam ini, tombol absen sore hilang.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {!isReadOnly && (
+                <div className="pt-4 border-t">
+                    <button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg shadow-lg font-bold flex items-center">
+                        <Save size={18} className="mr-2"/> Simpan Pengaturan
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 
 // ============================================================================
-// 3. SUB-COMPONENT: TAB HOLIDAYS (Hari Libur) - UPDATE: CHECKLIST & AUTO WIDTH
+// 4. SUB-COMPONENT: TAB HOLIDAYS (Hari Libur)
 // ============================================================================
 function TabHolidays({ holidays, isReadOnly }) {
   const [holForm, setHolForm] = useState({ date: '', desc: '' });
   const [editingId, setEditingId] = useState(null); 
-  const [selectedIds, setSelectedIds] = useState([]); // STATE UNTUK CEKLIST
+  const [selectedIds, setSelectedIds] = useState([]); 
   const formRef = useRef(null); 
 
   // --- LOGIKA SIMPAN & EDIT ---
@@ -232,7 +375,7 @@ function TabHolidays({ holidays, isReadOnly }) {
               batch.delete(doc(getCollectionPath('holidays'), id));
           });
           await batch.commit();
-          setSelectedIds([]); // Reset pilihan
+          setSelectedIds([]); 
           alert("Data terpilih berhasil dihapus.");
       } catch (error) {
           console.error(error);
@@ -242,9 +385,9 @@ function TabHolidays({ holidays, isReadOnly }) {
 
   const toggleSelectAll = () => {
       if (selectedIds.length === holidays.length) {
-          setSelectedIds([]); // Uncheck all
+          setSelectedIds([]); 
       } else {
-          setSelectedIds(holidays.map(h => h.id)); // Check all
+          setSelectedIds(holidays.map(h => h.id)); 
       }
   };
 
@@ -391,7 +534,6 @@ function TabHolidays({ holidays, isReadOnly }) {
                                  />
                              </th>
                          )}
-                         {/* UPDATE: Lebar otomatis menyesuaikan konten */}
                          <th className="p-3 text-left border-b w-auto whitespace-nowrap">Tanggal</th>
                          <th className="p-3 text-left border-b w-full">Keterangan</th>
                          <th className="p-3 border-b w-24 text-center">Aksi</th>
@@ -439,7 +581,7 @@ function TabHolidays({ holidays, isReadOnly }) {
 
 
 // ============================================================================
-// 4. SUB-COMPONENT: TAB USER MANAGEMENT
+// 5. SUB-COMPONENT: TAB USER MANAGEMENT
 // ============================================================================
 function TabUserManagement({ employees, user, settings, isReadOnly }) {
   const [newUserForm, setNewUserForm] = useState({ nama: '', jabatan: 'Staf Khusus', username: '', password: '', role: 'operator' });
@@ -608,7 +750,7 @@ function TabUserManagement({ employees, user, settings, isReadOnly }) {
 
 
 // ============================================================================
-// 5. HELPER COMPONENT: USER ROW
+// 6. HELPER COMPONENT: USER ROW
 // ============================================================================
 function UserRow({ targetUser, currentUser, onSave, isReadOnly }) {
    const [u, setU] = useState(targetUser.username);

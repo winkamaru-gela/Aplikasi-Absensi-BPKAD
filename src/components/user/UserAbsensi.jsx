@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Lock, CheckCircle, Clock, RefreshCw } from 'lucide-react';
-import { addDoc, serverTimestamp } from 'firebase/firestore'; // Import serverTimestamp
+import { addDoc, serverTimestamp } from 'firebase/firestore'; 
 import { getCollectionPath } from '../../lib/firebase';
-import { getTodayString, checkAbsensiTime, formatDateIndo, fetchServerTime } from '../../utils/helpers';
+import { getTodayString, formatDateIndo, fetchServerTime, adjustTimezone } from '../../utils/helpers';
 
-export default function UserAbsensi({ user, attendance, holidays }) {
+export default function UserAbsensi({ user, attendance, holidays, settings }) {
   // State untuk data form
   const [form, setForm] = useState({ date: '', session: '', status: 'Hadir' });
   
@@ -12,31 +12,37 @@ export default function UserAbsensi({ user, attendance, holidays }) {
   const [done, setDone] = useState(false);
   const [canAbsen, setCanAbsen] = useState(false);
   const [blockMessage, setBlockMessage] = useState('');
-  const [loadingTime, setLoadingTime] = useState(true); // Loading saat cek waktu server
+  const [loadingTime, setLoadingTime] = useState(true); 
   const [serverTime, setServerTime] = useState(null);
 
   // 1. Fetch Waktu Server saat komponen dimuat
   useEffect(() => {
     const initTime = async () => {
        setLoadingTime(true);
-       const time = await fetchServerTime();
-       setServerTime(time);
        
-       const h = time.getHours();
+       // A. Ambil waktu server murni
+       const rawTime = await fetchServerTime();
+       
+       // B. Sesuaikan dengan Zona Waktu dari Settings (WIB/WITA/WIT/Auto)
+       const adjustedTime = adjustTimezone(rawTime, settings?.zonaWaktu);
+       
+       setServerTime(adjustedTime);
+       
+       const h = adjustedTime.getHours();
        // Logika Sesi: Di atas jam 12 siang dianggap persiapan sesi Sore
        const sess = h >= 12 ? 'Sore' : 'Pagi';
        
        setForm(prev => ({ 
            ...prev, 
-           date: getTodayString(time), // Gunakan tanggal dari server time
+           date: getTodayString(adjustedTime), 
            session: sess 
        }));
        setLoadingTime(false);
     };
     initTime();
-  }, []);
+  }, [settings]);
 
-  // 2. Validasi Logika Absensi (Berjalan setiap form/holidays/serverTime berubah)
+  // 2. Validasi Logika Absensi
   useEffect(() => {
     if (!serverTime || !form.date) return;
 
@@ -62,12 +68,27 @@ export default function UserAbsensi({ user, attendance, holidays }) {
 
     setBlockMessage(''); 
     
-    // Cek 3: Validasi Jam (Menggunakan Server Time yang disimpan di state)
-    // Kita passing serverTime ke helper agar validasi tidak pakai jam HP
-    const check = checkAbsensiTime(form.session, serverTime);
-    setCanAbsen(check);
+    // Cek 3: Validasi Jam Menggunakan SETTINGS
+    const checkTimeDynamic = () => {
+        // Gunakan serverTime yang SUDAH disesuaikan zonanya
+        const timeStr = serverTime.toTimeString().slice(0, 5); // "HH:mm"
+        
+        const startPagi = settings?.jamMasukAwal || "06:00";
+        const endPagi = settings?.batasAbsenPagi || "10:00";
+        const startSore = settings?.jamPulangAwal || "16:00";
+        const endSore = settings?.batasAbsenSore || "18:00";
 
-  }, [form.session, form.date, holidays, serverTime]);
+        if (form.session === 'Pagi') {
+            return timeStr >= startPagi && timeStr <= endPagi;
+        } else if (form.session === 'Sore') {
+            return timeStr >= startSore && timeStr <= endSore;
+        }
+        return false;
+    };
+
+    setCanAbsen(checkTimeDynamic());
+
+  }, [form.session, form.date, holidays, serverTime, settings]);
 
   // 3. Cek apakah user sudah absen hari ini
   useEffect(() => {
@@ -86,9 +107,8 @@ export default function UserAbsensi({ user, attendance, holidays }) {
             userId: user.id, 
             userName: user.nama, 
             statusApproval: 'pending', 
-            // SECURITY: Gunakan serverTimestamp() agar user tidak bisa memalsukan jam kirim
-            timestamp: new Date().toISOString(), // Untuk sorting di client (sementara)
-            serverTimestamp: serverTimestamp()   // Untuk validasi audit trail (absolut)
+            timestamp: new Date().toISOString(), 
+            serverTimestamp: serverTimestamp()   
         });
         alert('Absensi berhasil dikirim.');
      } catch (error) {
@@ -98,9 +118,10 @@ export default function UserAbsensi({ user, attendance, holidays }) {
   };
 
   const handleRefreshTime = async () => {
-     const time = await fetchServerTime();
-     setServerTime(time);
-     alert(`Waktu server diperbarui: ${time.toLocaleTimeString()}`);
+     const rawTime = await fetchServerTime();
+     const adjustedTime = adjustTimezone(rawTime, settings?.zonaWaktu);
+     setServerTime(adjustedTime);
+     alert(`Waktu server diperbarui: ${adjustedTime.toLocaleTimeString()}`);
   };
 
   if (loadingTime) return (
@@ -115,7 +136,8 @@ export default function UserAbsensi({ user, attendance, holidays }) {
        <div className="text-center mb-6">
            <h2 className="text-2xl font-bold text-slate-800">Absensi Mandiri</h2>
            <div className="text-xs text-slate-500 mt-1 flex items-center justify-center gap-1 cursor-pointer" onClick={handleRefreshTime} title="Klik untuk refresh waktu">
-               <Clock size={12}/> Waktu Server: {serverTime?.toLocaleTimeString('id-ID')}
+               <Clock size={12}/> 
+               Waktu Server ({settings?.zonaWaktu || 'Auto'}): {serverTime?.toLocaleTimeString('id-ID')}
            </div>
        </div>
        
@@ -127,13 +149,17 @@ export default function UserAbsensi({ user, attendance, holidays }) {
          </div>
        )}
 
-       {/* Warning Jam Belum Buka */}
+       {/* Warning Jam Belum Buka (Dynamic Message) */}
        {!canAbsen && !done && !blockMessage && (
          <div className="mb-4 bg-yellow-100 text-yellow-800 p-3 rounded text-sm flex items-center border border-yellow-200">
            <Lock size={16} className="mr-2 flex-shrink-0"/>
            <div>
                <span className="font-bold">Absensi {form.session} Ditutup.</span>
-               <br/>Pagi: 06.00-09.00 | Sore: 16.00-18.00
+               <br/>
+               <span className="text-xs">
+                   Pagi: {settings?.jamMasukAwal || '06:00'}-{settings?.batasAbsenPagi || '10:00'} | 
+                   Sore: {settings?.jamPulangAwal || '16:00'}-{settings?.batasAbsenSore || '18:00'}
+               </span>
            </div>
          </div>
        )}

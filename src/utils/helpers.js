@@ -9,7 +9,13 @@ export const INITIAL_SETTINGS = {
   kepalaName: 'Nama Kepala Dinas',
   kepalaNip: '19xxxxxxxxxxxxxx',
   kepalaJabatan: 'Kepala Badan',
-  titimangsa: 'Bobong'
+  titimangsa: 'Bobong',
+  // Default Waktu
+  jamMasukAwal: '06:00',
+  batasAbsenPagi: '10:00',
+  jamPulangAwal: '16:00',
+  batasAbsenSore: '18:00',
+  zonaWaktu: 'Auto' // Auto, WIB, WITA, WIT
 };
 
 export const formatDateIndo = (dateStr) => {
@@ -58,18 +64,40 @@ export const checkAbsensiTime = (session, customDate = null) => {
 // --- SECURITY UPDATE: Fetch Real Server Time ---
 export const fetchServerTime = async () => {
   try {
-    // Melakukan request HEAD ke halaman ini sendiri untuk mendapatkan header 'Date' dari server hosting
     const response = await fetch('/', { method: 'HEAD', cache: 'no-store' });
     const dateString = response.headers.get('Date');
     if (dateString) {
       return new Date(dateString);
     }
-    // Fallback jika header tidak ada
     return new Date(); 
   } catch (e) {
     console.warn("Gagal mengambil waktu server, menggunakan waktu lokal:", e);
     return new Date();
   }
+};
+
+// --- FUNGSI BARU: Penyesuaian Zona Waktu ---
+export const adjustTimezone = (date, zone) => {
+  if (!date) return new Date();
+  if (!zone || zone === 'Auto') return date; // Gunakan waktu lokal perangkat
+
+  // Mapping Offset (GMT/UTC)
+  const offsets = {
+    'WIB': 7,
+    'WITA': 8,
+    'WIT': 9
+  };
+
+  const targetOffset = offsets[zone];
+  if (!targetOffset) return date;
+
+  // 1. Dapatkan waktu UTC murni dalam milidetik (dikurangi offset lokal)
+  const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+
+  // 2. Tambahkan offset target (Jam * 60 menit * 60 detik * 1000 ms)
+  const newTime = utc + (3600000 * targetOffset);
+
+  return new Date(newTime);
 };
 
 export const exportToCSV = (data, filename) => {
