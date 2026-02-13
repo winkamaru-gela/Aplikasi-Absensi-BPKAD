@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, UserCheck, XCircle, Activity, FileText, Calendar, Briefcase } from 'lucide-react';
 import { getTodayString, DEFAULT_LOGO_URL } from '../../utils/helpers';
+import { getDailyStats } from '../../utils/statistics'; // Import Logic Baru
 
 export default function AdminDashboard({ employees, attendance, settings }) {
   const [date, setDate] = useState(getTodayString());
@@ -9,20 +10,11 @@ export default function AdminDashboard({ employees, attendance, settings }) {
      return h >= 12 ? 'Sore' : 'Pagi';
   });
 
-  const pegawaiOnly = employees.filter(e => e.role === 'user'); 
-  const logs = attendance.filter(l => l.date === date && l.session === session && l.statusApproval === 'approved');
-  
-  const hadir = logs.filter(l => l.status === 'Hadir').length;
-  const sakit = logs.filter(l => l.status === 'Sakit').length;
-  const izin = logs.filter(l => l.status === 'Izin').length;
-  const cuti = logs.filter(l => l.status === 'Cuti').length;
-  const dl = logs.filter(l => l.status === 'Dinas Luar').length;
-  
-  const recordedIds = logs.map(l => l.userId);
-  const alpa = pegawaiOnly.length - recordedIds.length;
+  // GUNAKAN LOGIC TERPUSAT
+  const { counts } = getDailyStats(date, session, employees, attendance);
 
   return (
-    <div className="p-2 md:p-6">
+    <div className="p-2 md:p-6 animate-in fade-in duration-500">
        <div className="bg-slate-800 text-white p-6 rounded-xl flex items-center gap-6 mb-8 shadow-xl">
           <img src={settings.logoUrl || DEFAULT_LOGO_URL} className="w-20 h-20 bg-white rounded-full p-1 object-contain" alt="Logo"/>
           <div>
@@ -60,7 +52,7 @@ export default function AdminDashboard({ employees, attendance, settings }) {
                    <h3 className="font-bold text-blue-100 uppercase text-xs tracking-wider">Total Pegawai</h3>
                    <Users className="text-blue-200" size={24}/>
                 </div>
-                <p className="text-4xl font-bold">{pegawaiOnly.length}</p>
+                <p className="text-4xl font-bold">{counts.TotalPegawai}</p>
              </div>
              <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-2 translate-y-2">
                 <Users size={100}/>
@@ -73,7 +65,7 @@ export default function AdminDashboard({ employees, attendance, settings }) {
                    <h3 className="font-bold text-green-100 uppercase text-xs tracking-wider">Hadir ({session})</h3>
                    <UserCheck className="text-green-200" size={24}/>
                 </div>
-                <p className="text-4xl font-bold">{hadir}</p>
+                <p className="text-4xl font-bold">{counts.Hadir}</p>
              </div>
              <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-2 translate-y-2">
                 <UserCheck size={100}/>
@@ -86,7 +78,7 @@ export default function AdminDashboard({ employees, attendance, settings }) {
                    <h3 className="font-bold text-red-100 uppercase text-xs tracking-wider">Belum Absen</h3>
                    <XCircle className="text-red-200" size={24}/>
                 </div>
-                <p className="text-4xl font-bold">{alpa}</p>
+                <p className="text-4xl font-bold">{counts.Alpa}</p>
              </div>
              <div className="absolute right-0 bottom-0 opacity-10 transform translate-x-2 translate-y-2">
                 <XCircle size={100}/>
@@ -98,28 +90,28 @@ export default function AdminDashboard({ employees, attendance, settings }) {
           <div className="bg-white p-4 rounded-lg shadow border-l-4 border-yellow-500 flex items-center justify-between">
              <div>
                 <p className="text-xs text-gray-500 font-bold uppercase">Sakit</p>
-                <p className="text-2xl font-bold text-slate-700">{sakit}</p>
+                <p className="text-2xl font-bold text-slate-700">{counts.Sakit}</p>
              </div>
              <Activity className="text-yellow-500 opacity-50"/>
           </div>
           <div className="bg-white p-4 rounded-lg shadow border-l-4 border-orange-500 flex items-center justify-between">
              <div>
                 <p className="text-xs text-gray-500 font-bold uppercase">Izin</p>
-                <p className="text-2xl font-bold text-slate-700">{izin}</p>
+                <p className="text-2xl font-bold text-slate-700">{counts.Izin}</p>
              </div>
              <FileText className="text-orange-500 opacity-50"/>
           </div>
           <div className="bg-white p-4 rounded-lg shadow border-l-4 border-purple-500 flex items-center justify-between">
              <div>
                 <p className="text-xs text-gray-500 font-bold uppercase">Cuti</p>
-                <p className="text-2xl font-bold text-slate-700">{cuti}</p>
+                <p className="text-2xl font-bold text-slate-700">{counts.Cuti}</p>
              </div>
              <Calendar className="text-purple-500 opacity-50"/>
           </div>
           <div className="bg-white p-4 rounded-lg shadow border-l-4 border-teal-500 flex items-center justify-between">
              <div>
                 <p className="text-xs text-gray-500 font-bold uppercase">Dinas Luar</p>
-                <p className="text-2xl font-bold text-slate-700">{dl}</p>
+                <p className="text-2xl font-bold text-slate-700">{counts.DL}</p>
              </div>
              <Briefcase className="text-teal-500 opacity-50"/>
           </div>

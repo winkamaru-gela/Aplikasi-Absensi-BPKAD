@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X, ChevronLeft } from 'lucide-react';
-import { signInAnonymously, onAuthStateChanged } from "firebase/auth";
-import { onSnapshot, addDoc, getDocs } from "firebase/firestore";
+import { Menu, X, ChevronLeft, List } from 'lucide-react';
 
-// --- IMPORTS STRUKTUR BARU ---
-import { auth, getCollectionPath } from './lib/firebase';
-import { INITIAL_SETTINGS, DEFAULT_LOGO_URL } from './utils/helpers';
+// --- CUSTOM HOOK (LOGIC) ---
+import { useAppData } from './hooks/useAppData';
+import { DEFAULT_LOGO_URL } from './utils/helpers';
 
 // --- COMPONENTS ---
 import LoginPage from './components/auth/LoginPage';
 import SidebarContent from './components/layout/SidebarContent';
 
-// === PERHATIAN: KOMPONEN ADMIN ===
+// === KOMPONEN ADMIN ===
 import AdminDashboard from './components/admin/AdminDashboard';
 import AdminInputAbsensi from './components/admin/AdminInputAbsensi';
 import AdminLaporanHarian from './components/admin/AdminLaporanHarian';
@@ -20,7 +18,8 @@ import AdminTerimaAbsensi from './components/admin/AdminTerimaAbsensi';
 import AdminDataPegawai from './components/admin/AdminDataPegawai';
 import AdminSettings from './components/admin/AdminSettings';
 import AdminCetakAbsensiManual from './components/admin/AdminCetakAbsensiManual';
-import AdminManajemenSurat from './components/admin/AdminManajemenSurat'; // Pastikan Import Ini Ada
+import AdminManajemenSurat from './components/admin/AdminManajemenSurat';
+import AdminRekapanTahunan from './components/admin/AdminRekapanTahunan';
 
 // === KOMPONEN USER ===
 import UserAbsensi from './components/user/UserAbsensi';
@@ -28,182 +27,189 @@ import UserLaporanStatus from './components/user/UserLaporanStatus';
 import UserRekapan from './components/user/UserRekapan';
 
 export default function App() {
-  const [firebaseUser, setFirebaseUser] = useState(null);
-  const [appUser, setAppUser] = useState(null); 
-  
-  // Data States
-  const [employees, setEmployees] = useState([]);
-  const [attendance, setAttendance] = useState([]);
-  const [settings, setSettings] = useState(INITIAL_SETTINGS);
-  const [holidays, setHolidays] = useState([]);
-  
-  const [loading, setLoading] = useState(true);
+  const { 
+    appUser, 
+    employees, 
+    attendance, 
+    settings, 
+    holidays, 
+    loading, 
+    handleAppLogin, 
+    handleAppLogout 
+  } = useAppData();
+
   const [activeTab, setActiveTab] = useState('admin_dashboard'); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true);
 
-  // --- FIREBASE LISTENERS (Global Data) ---
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        await signInAnonymously(auth);
-      } catch (error) {
-        console.error("Login Error:", error);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => { if (user) setFirebaseUser(user); });
-    return () => unsubscribe();
-  }, []);
+     setActiveTab('admin_dashboard');
+  }, [appUser]);
 
-  useEffect(() => {
-    if (!firebaseUser) return;
-    const seedAdminIfEmpty = async () => {
-       try {
-         const usersRef = getCollectionPath('users');
-         const snapshot = await getDocs(usersRef);
-         if (snapshot.empty) {
-            // Logic seed admin jika diperlukan
-         }
-       } catch (error) { console.error(error); }
-    };
-    seedAdminIfEmpty();
-  }, [firebaseUser]);
-
-  useEffect(() => {
-    if (!firebaseUser) return;
-
-    const unsubEmp = onSnapshot(getCollectionPath('users'), (snap) => {
-      setEmployees(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    });
-
-    const unsubAtt = onSnapshot(getCollectionPath('attendance'), (snap) => {
-      setAttendance(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    const unsubSet = onSnapshot(getCollectionPath('settings'), (snap) => {
-      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (data.length > 0) setSettings(data[0]);
-      else addDoc(getCollectionPath('settings'), INITIAL_SETTINGS);
-    });
-
-    const unsubHol = onSnapshot(getCollectionPath('holidays'), (snap) => {
-       setHolidays(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    return () => { unsubEmp(); unsubAtt(); unsubSet(); unsubHol(); };
-  }, [firebaseUser]);
-
-  const handleLogin = (username, password) => {
-    const user = employees.find(u => u.username === username && u.password === password);
-    if (user) {
-      setAppUser(user);
-      setActiveTab('admin_dashboard'); 
-    } else {
-      alert('Username atau password salah!');
-    }
+  const onLogin = (u, p) => {
+      const success = handleAppLogin(u, p);
+      if(!success) alert('Username atau password salah!');
   };
 
-  const handleLogout = () => {
-    setAppUser(null);
-    setActiveTab('admin_dashboard');
-    setIsMobileMenuOpen(false);
+  const onLogout = () => {
+      handleAppLogout();
+      setIsMobileMenuOpen(false);
   };
 
   if (loading) return (
     <div className="flex flex-col h-screen items-center justify-center bg-slate-100">
       <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      <p className="mt-4 font-bold text-slate-500">Memuat Data...</p>
+      <p className="mt-4 font-bold text-slate-500">Menghubungkan ke Server...</p>
     </div>
   );
 
-  if (!appUser) return <LoginPage onLogin={handleLogin} settings={settings} />;
+  if (!appUser) return <LoginPage onLogin={onLogin} settings={settings} />;
 
   const isManagement = ['admin', 'operator', 'pengelola'].includes(appUser.role);
   const pendingCount = attendance.filter(l => l.statusApproval === 'pending').length;
-  // Mode Landscape otomatis aktif untuk halaman cetak tabel & cetak surat
-  const isLandscape = activeTab === 'cetak_manual' || activeTab === 'manajemen_surat';
+  const isLandscape = activeTab === 'cetak_manual' || activeTab === 'manajemen_surat' || activeTab === 'rekapan_tahunan';
+
+  const getHeaderTitle = () => {
+    switch(activeTab) {
+        case 'admin_dashboard': return 'Dashboard';
+        case 'input_absensi': return 'Input Absensi';
+        case 'laporan_harian': return 'Laporan Harian';
+        case 'laporan_bulanan': return 'Rekapan Bulanan';
+        case 'rekapan_tahunan': return 'Rekapan Tahunan';
+        case 'cetak_manual': return 'Cetak Manual';
+        case 'manajemen_surat': return 'Aplikasi Surat';
+        case 'terima_absensi': return 'Verifikasi Absensi';
+        case 'data_pegawai': return 'Data Pegawai';
+        case 'settings': return 'Pengaturan';
+        case 'user_absensi': return 'Absensi Mandiri';
+        case 'user_laporan_status': return 'Status Absensi';
+        case 'user_rekapan': return 'Rekapan Bulanan';
+        case 'user_laporan_harian': return 'Laporan Harian';
+        default: return 'Aplikasi Absensi';
+    }
+  };
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col md:flex-row print:bg-white print:block print:h-auto text-slate-800 overflow-hidden font-sans">
       
-      {/* MOBILE HEADER */}
-      <div id="mobile-header" className="md:hidden bg-blue-900 text-white p-4 flex justify-between items-center print:hidden shadow-md z-50 flex-shrink-0">
-         <div className="flex items-center gap-2">
-            <img src={settings.logoUrl || DEFAULT_LOGO_URL} className="w-8 h-8 object-contain bg-white rounded-full p-0.5" alt="logo"/>
-            <span className="font-bold text-sm">{settings.opdShort}</span>
-         </div>
-         <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-            {isMobileMenuOpen ? <X size={24}/> : <Menu size={24}/>}
-         </button>
-      </div>
+      {/* --- BACKDROP MOBILE --- */}
+      {isMobileMenuOpen && (
+        <div 
+            className="fixed inset-0 bg-black/50 z-[60] md:hidden backdrop-blur-sm transition-opacity"
+            onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
 
-      {/* SIDEBAR */}
+      {/* --- SIDEBAR --- */}
       <div id="sidebar-container" className={`
+          fixed md:relative inset-y-0 left-0 z-[70] 
+          w-64 bg-slate-900 text-white shadow-xl transform transition-transform duration-300 ease-in-out
           ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} 
-          md:translate-x-0 transition-all duration-300 ease-in-out
-          ${isDesktopSidebarOpen ? 'md:w-64' : 'md:w-0 md:overflow-hidden'}
-          bg-slate-900 text-white flex-shrink-0 print:hidden shadow-xl z-40 absolute md:relative w-64 h-full flex flex-col
+          ${isDesktopSidebarOpen ? 'md:translate-x-0' : 'md:-translate-x-full md:w-0'}
+          flex flex-col h-full print:hidden
       `}>
-         <button onClick={() => setIsDesktopSidebarOpen(false)} className="hidden md:flex absolute top-4 right-[-12px] z-50 bg-slate-800 text-white p-1 rounded-full border border-slate-700 shadow-md">
-            <ChevronLeft size={16} />
-         </button>
-
          <SidebarContent 
             user={appUser} 
             activeTab={activeTab} 
             setActiveTab={(tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} 
-            onLogout={handleLogout} 
+            onLogout={onLogout} 
             settings={settings} 
             pendingCount={pendingCount}
+            isDesktopSidebarOpen={isDesktopSidebarOpen}
+            setIsDesktopSidebarOpen={setIsDesktopSidebarOpen}
+            setIsMobileMenuOpen={setIsMobileMenuOpen}
          />
       </div>
       
-      {/* MAIN CONTENT */}
-      <main id="main-content" className="flex-1 p-4 md:p-8 overflow-y-auto print:p-0 print:overflow-visible print:h-auto print:block relative">
-        {!isDesktopSidebarOpen && (
-           <button onClick={() => setIsDesktopSidebarOpen(true)} className="hidden md:flex absolute top-4 left-4 z-50 bg-slate-900 text-white p-2 rounded-lg shadow-lg items-center gap-2">
-              <Menu size={20} /> <span className="text-xs font-bold">MENU</span>
-           </button>
-        )}
+      {/* --- MAIN CONTENT WRAPPER --- */}
+      <main id="main-content" className="flex-1 flex flex-col h-full overflow-hidden relative transition-all duration-300 w-full">
         
-        <style>{`
-          @media print {
-            @page { size: ${isLandscape ? 'landscape' : 'portrait'}; margin: 10mm; }
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; height: auto !important; overflow: visible !important; }
-            #sidebar-container, #mobile-header, button { display: none !important; }
-            #main-content { width: 100% !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; display: block !important; }
-          }
-        `}</style>
+        {/* HEADER (Sticky Top) */}
+        <header className="bg-white shadow-sm h-16 flex items-center justify-between px-4 md:px-6 flex-shrink-0 print:hidden z-10 sticky top-0">
+            <div className="flex items-center gap-3">
+                {/* Tombol Toggle Mobile */}
+                <button 
+                    onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+                    className="md:hidden p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
+                >
+                    <List size={24}/>
+                </button>
 
-        {/* --- LOGIKA ROUTING HALAMAN --- */}
-        {isManagement ? (
-          <>
-            {activeTab === 'admin_dashboard' && <AdminDashboard employees={employees} attendance={attendance} settings={settings} />}
-            {activeTab === 'input_absensi' && <AdminInputAbsensi employees={employees} attendance={attendance} />}
-            {activeTab === 'laporan_harian' && <AdminLaporanHarian employees={employees} attendance={attendance} settings={settings} holidays={holidays} />}
-            {activeTab === 'laporan_bulanan' && <AdminRekapanBulanan employees={employees} attendance={attendance} settings={settings} user={appUser} />}
-            {activeTab === 'cetak_manual' && <AdminCetakAbsensiManual employees={employees} settings={settings} holidays={holidays} />} 
+                {/* Tombol Toggle Desktop */}
+                <button 
+                    onClick={() => setIsDesktopSidebarOpen(!isDesktopSidebarOpen)} 
+                    className="hidden md:block p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
+                    title={isDesktopSidebarOpen ? "Tutup Sidebar" : "Buka Sidebar"}
+                >
+                    <List size={24}/>
+                </button>
+
+                {/* Judul Halaman (Sembunyikan di Mobile Kecil jika sempit, atau gunakan truncate) */}
+                <h2 className="font-bold text-lg text-slate-800 line-clamp-1 md:block hidden">{getHeaderTitle()}</h2>
+                {/* Judul Mobile (Lebih kecil) */}
+                <h2 className="font-bold text-md text-slate-800 md:hidden">{getHeaderTitle()}</h2>
+            </div>
             
-            {/* === INI BAGIAN YANG SEBELUMNYA HILANG === */}
-            {activeTab === 'manajemen_surat' && <AdminManajemenSurat employees={employees} settings={settings} user={appUser} />}
-            {/* ========================================= */}
+            {/* INFORMASI USER (Tampil di Mobile & Desktop) */}
+            <div className="flex items-center gap-3">
+                {/* Text Container: Tampil block (bukan hidden) */}
+                <div className="text-right">
+                    <p className="text-sm font-bold text-slate-700 leading-tight">{appUser.nama}</p>
+                    
+                    {/* Logika Subtitle: NIP (User) atau Role (Admin) */}
+                    <p className="text-[10px] md:text-xs text-slate-500 uppercase">
+                        {appUser.role === 'user' 
+                            ? `NIP. ${appUser.nip || '-'}` 
+                            : appUser.role
+                        }
+                    </p>
+                </div>
+                
+                {/* Avatar: Sedikit diperkecil di mobile jika perlu, tapi w-10 biasanya oke */}
+                <div className="w-9 h-9 md:w-10 md:h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-sm border border-blue-200 flex-shrink-0">
+                    {appUser.nama.charAt(0)}
+                </div>
+            </div>
+        </header>
 
-            {activeTab === 'terima_absensi' && <AdminTerimaAbsensi employees={employees} attendance={attendance} />}
-            {activeTab === 'data_pegawai' && <AdminDataPegawai employees={employees} currentUser={appUser} />}
-            {activeTab === 'settings' && <AdminSettings settings={settings} holidays={holidays} employees={employees} user={appUser} />}
-          </>
-        ) : (
-          <>
-            {activeTab === 'admin_dashboard' && <AdminDashboard employees={employees} attendance={attendance} settings={settings} />}
-            {activeTab === 'user_absensi' && <UserAbsensi user={appUser} attendance={attendance} holidays={holidays} />}
-            {activeTab === 'user_laporan_status' && <UserLaporanStatus user={appUser} attendance={attendance} />}
-            {activeTab === 'user_laporan_harian' && <AdminLaporanHarian employees={employees} attendance={attendance} settings={settings} isUserView={true} holidays={holidays} />}
-            {activeTab === 'user_rekapan' && <UserRekapan user={appUser} attendance={attendance} settings={settings} />}
-            {activeTab === 'cetak_manual' && <AdminCetakAbsensiManual employees={employees} settings={settings} holidays={holidays} />}
-          </>
-        )}
+        {/* CONTENT AREA */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 print:p-0 print:overflow-visible bg-gray-50">
+            <style>{`
+            @media print {
+                @page { size: ${isLandscape ? 'landscape' : 'portrait'}; margin: 10mm; }
+                body { -webkit-print-color-adjust: exact; print-color-adjust: exact; height: auto !important; overflow: visible !important; }
+                #sidebar-container, header, button { display: none !important; }
+                #main-content { width: 100% !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; display: block !important; }
+            }
+            `}</style>
+
+            {isManagement ? (
+            <>
+                {activeTab === 'admin_dashboard' && <AdminDashboard employees={employees} attendance={attendance} settings={settings} />}
+                {activeTab === 'input_absensi' && <AdminInputAbsensi employees={employees} attendance={attendance} />}
+                {activeTab === 'laporan_harian' && <AdminLaporanHarian employees={employees} attendance={attendance} settings={settings} holidays={holidays} />}
+                {activeTab === 'laporan_bulanan' && <AdminRekapanBulanan employees={employees} attendance={attendance} settings={settings} user={appUser} />}
+                {activeTab === 'rekapan_tahunan' && <AdminRekapanTahunan employees={employees} attendance={attendance} settings={settings} />}
+                {activeTab === 'cetak_manual' && <AdminCetakAbsensiManual employees={employees} settings={settings} holidays={holidays} />} 
+                {activeTab === 'manajemen_surat' && <AdminManajemenSurat employees={employees} settings={settings} user={appUser} />}
+                {activeTab === 'terima_absensi' && <AdminTerimaAbsensi employees={employees} attendance={attendance} />}
+                {activeTab === 'data_pegawai' && <AdminDataPegawai employees={employees} currentUser={appUser} />}
+                {activeTab === 'settings' && <AdminSettings settings={settings} holidays={holidays} employees={employees} user={appUser} />}
+            </>
+            ) : (
+            <>
+                {activeTab === 'admin_dashboard' && <AdminDashboard employees={employees} attendance={attendance} settings={settings} />}
+                {activeTab === 'user_absensi' && <UserAbsensi user={appUser} attendance={attendance} holidays={holidays} />}
+                {activeTab === 'user_laporan_status' && <UserLaporanStatus user={appUser} attendance={attendance} />}
+                
+                {activeTab === 'user_laporan_harian' && <AdminLaporanHarian employees={employees} attendance={attendance} settings={settings} isUserView={true} holidays={holidays} />}
+                {activeTab === 'user_rekapan' && <UserRekapan user={appUser} attendance={attendance} settings={settings} employees={employees} />}
+                {activeTab === 'rekapan_tahunan' && <AdminRekapanTahunan employees={employees} attendance={attendance} settings={settings} user={appUser} />}
+                
+                {activeTab === 'cetak_manual' && <AdminCetakAbsensiManual employees={employees} settings={settings} holidays={holidays} />}
+            </>
+            )}
+        </div>
       </main>
     </div>
   );

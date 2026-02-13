@@ -2,13 +2,13 @@ export const DEFAULT_LOGO_URL = "https://play-lh.googleusercontent.com/FXc0mf6Ya
 
 export const INITIAL_SETTINGS = {
   opdName: 'Badan Pengelolaan Keuangan dan Aset Daerah',
-  opdShort: 'Singakatan Organisasi',
+  opdShort: 'BPKAD',
   parentAgency: 'Pemerintah Kabupaten Pulau Taliabu',
   address: 'Jl. Merdeka No. 1, Bobong, Pulau Taliabu',
   logoUrl: DEFAULT_LOGO_URL,
-  kepalaName: 'Darwin Kamarudin ... Ganti',
-  kepalaNip: '199208xxxxxxxxx',
-  kepalaJabatan: 'Kepala Badan atau lainnya',
+  kepalaName: 'Nama Kepala Dinas',
+  kepalaNip: '19xxxxxxxxxxxxxx',
+  kepalaJabatan: 'Kepala Badan',
   titimangsa: 'Bobong'
 };
 
@@ -24,8 +24,8 @@ export const formatDateNoWeekday = (dateStr) => {
   return new Date(dateStr).toLocaleDateString('id-ID', options);
 };
 
-export const getTodayString = () => {
-  const now = new Date();
+export const getTodayString = (customDate = null) => {
+  const now = customDate || new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
@@ -40,8 +40,9 @@ export const getWeekNumber = (d) => {
     return weekNo;
 };
 
-export const checkAbsensiTime = (session) => {
-  const now = new Date();
+// --- SECURITY UPDATE: Check Time menerima parameter customDate ---
+export const checkAbsensiTime = (session, customDate = null) => {
+  const now = customDate || new Date();
   const hour = now.getHours();
   // Pagi: 06.00 - 09.00
   if (session === 'Pagi') {
@@ -52,6 +53,23 @@ export const checkAbsensiTime = (session) => {
     return hour >= 16 && hour < 18;
   }
   return false;
+};
+
+// --- SECURITY UPDATE: Fetch Real Server Time ---
+export const fetchServerTime = async () => {
+  try {
+    // Melakukan request HEAD ke halaman ini sendiri untuk mendapatkan header 'Date' dari server hosting
+    const response = await fetch('/', { method: 'HEAD', cache: 'no-store' });
+    const dateString = response.headers.get('Date');
+    if (dateString) {
+      return new Date(dateString);
+    }
+    // Fallback jika header tidak ada
+    return new Date(); 
+  } catch (e) {
+    console.warn("Gagal mengambil waktu server, menggunakan waktu lokal:", e);
+    return new Date();
+  }
 };
 
 export const exportToCSV = (data, filename) => {

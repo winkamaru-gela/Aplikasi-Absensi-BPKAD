@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Printer, Trash2 } from 'lucide-react';
+import { Printer, Trash2, FileDown } from 'lucide-react'; 
 import { writeBatch, doc } from 'firebase/firestore';
 import { db, getCollectionPath } from '../../lib/firebase';
 import { DEFAULT_LOGO_URL } from '../../utils/helpers';
+import { getMonthlyStats } from '../../utils/statistics'; 
+import * as XLSX from 'xlsx'; 
 
 export default function AdminRekapanBulanan({ employees, attendance, settings, user }) {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -15,39 +17,41 @@ export default function AdminRekapanBulanan({ employees, attendance, settings, u
         return noA - noB;
     });
 
-  const logs = attendance.filter(l => l.date.startsWith(month) && l.statusApproval === 'approved');
+  // GUNAKAN LOGIC TERPUSAT
+  const { monthlyLogs, calculateUserStats } = getMonthlyStats(month, attendance);
 
-  const getStats = (userId) => {
-    const userLogs = logs.filter(l => l.userId === userId);
-    
-    const stats = {
-        Hadir: { p: 0, s: 0 },
-        Sakit: { p: 0, s: 0 },
-        Izin: { p: 0, s: 0 },
-        Cuti: { p: 0, s: 0 },
-        'Dinas Luar': { p: 0, s: 0 }
-    };
-
-    userLogs.forEach(log => {
-        const status = log.status; 
-        const session = log.session; 
-        
-        if (stats[status]) {
-            if (session === 'Pagi') {
-                stats[status].p += 1;
-            } else if (session === 'Sore') {
-                stats[status].s += 1;
-            }
-        }
+  // --- FITUR BARU: EXPORT EXCEL ---
+  const handleExportExcel = () => {
+    const dataToExport = pegawaiOnly.map((emp, i) => {
+        const stats = calculateUserStats(emp.id);
+        return {
+            'No': i + 1,
+            'Nama Pegawai': emp.nama,
+            'NIP': emp.nip || '-',
+            'Jabatan': emp.jabatan,
+            'Hadir (Pagi)': stats.Hadir.p,
+            'Hadir (Sore)': stats.Hadir.s,
+            'Sakit (P)': stats.Sakit.p,
+            'Sakit (S)': stats.Sakit.s,
+            'Izin (P)': stats.Izin.p,
+            'Izin (S)': stats.Izin.s,
+            'Cuti (P)': stats.Cuti.p,
+            'Cuti (S)': stats.Cuti.s,
+            'DL (P)': stats['Dinas Luar'].p,
+            'DL (S)': stats['Dinas Luar'].s,
+        };
     });
 
-    return stats;
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Rekapan Bulanan");
+    XLSX.writeFile(wb, `Rekapan_Absensi_${settings.opdShort}_${month}.xlsx`);
   };
 
   const handleClear = async () => {
     if (confirm(`PERINGATAN: Anda akan menghapus seluruh data absensi bulan ${month}. Lanjutkan?`)) {
        const batch = writeBatch(db);
-       logs.forEach(l => {
+       monthlyLogs.forEach(l => {
           batch.delete(doc(getCollectionPath('attendance'), l.id));
        });
        await batch.commit();
@@ -57,20 +61,26 @@ export default function AdminRekapanBulanan({ employees, attendance, settings, u
 
   return (
     <div className="space-y-6">
-       <div className="bg-white p-4 rounded shadow print:hidden flex items-end justify-between">
+       <div className="bg-white p-4 rounded shadow print:hidden flex flex-wrap gap-4 items-end justify-between">
           <div>
              <label className="text-xs font-bold block mb-1">Pilih Bulan</label>
              <input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="border p-2 rounded"/>
           </div>
-          <div className="flex gap-2">
-             {user.role === 'admin' && (
-               <button onClick={handleClear} className="bg-red-600 text-white px-4 py-2 rounded flex items-center hover:bg-red-700">
-                  <Trash2 size={16} className="mr-2"/> Reset/Kosongkan Data
-               </button>
-             )}
-             <button onClick={()=>window.print()} className="bg-slate-800 text-white px-4 py-2 rounded flex items-center hover:bg-black">
+          <div className="flex gap-2 flex-wrap">
+             {/* TOMBOL EXPORT EXCEL */}
+             <button onClick={handleExportExcel} className="bg-green-600 text-white px-4 py-2 rounded flex items-center hover:bg-green-700 shadow-sm transition-transform hover:scale-105">
+                <FileDown size={16} className="mr-2"/> Export Excel
+             </button>
+
+             <button onClick={()=>window.print()} className="bg-slate-800 text-white px-4 py-2 rounded flex items-center hover:bg-black shadow-sm transition-transform hover:scale-105">
                 <Printer size={16} className="mr-2"/> Cetak
              </button>
+             
+             {user.role === 'admin' && (
+               <button onClick={handleClear} className="bg-red-600 text-white px-4 py-2 rounded flex items-center hover:bg-red-700 shadow-sm ml-2">
+                  <Trash2 size={16} className="mr-2"/> Reset Data
+               </button>
+             )}
           </div>
        </div>
 
@@ -92,56 +102,60 @@ export default function AdminRekapanBulanan({ employees, attendance, settings, u
           <table className="w-full border-collapse border border-black text-sm">
              <thead>
                 <tr className="bg-slate-100 print:bg-transparent">
-                   <th className="border border-black p-1 align-middle w-10" rowSpan="2">No</th>
-                   <th className="border border-black p-1 text-left align-middle w-1 whitespace-nowrap" rowSpan="2">Jabatan / Nama / NIP</th>
+                   {/* UPDATE: Kolom No w-[1%] whitespace-nowrap agar rapat */}
+                   <th className="border border-black p-1 align-middle w-[1%] whitespace-nowrap" rowSpan="2">No</th>
                    
-                   <th className="border border-black p-1 text-center" colSpan="2">Hadir</th>
-                   <th className="border border-black p-1 text-center" colSpan="2">Sakit</th>
-                   <th className="border border-black p-1 text-center" colSpan="2">Izin</th>
-                   <th className="border border-black p-1 text-center" colSpan="2">Cuti</th>
-                   <th className="border border-black p-1 text-center" colSpan="2">DL</th>
+                   {/* UPDATE: Kolom Nama/NIP w-[1%] whitespace-nowrap agar rapat sesuai teks */}
+                   <th className="border border-black p-1 text-left align-middle w-[1%] whitespace-nowrap" rowSpan="2">Nama / NIP</th>
+
+                   {/* UPDATE: Kolom Jabatan w-[1%] whitespace-nowrap agar rapat (menyusut ke kiri) */}
+                   <th className="border border-black p-1 text-center align-middle w-[1%] whitespace-nowrap" rowSpan="2">Jabatan</th>
+                   
+                   {/* UPDATE: Kolom Statistik w-auto agar otomatis membagi sisa ruang */}
+                   <th className="border border-black p-1 text-center w-auto" colSpan="2">Hadir</th>
+                   <th className="border border-black p-1 text-center w-auto" colSpan="2">Sakit</th>
+                   <th className="border border-black p-1 text-center w-auto" colSpan="2">Izin</th>
+                   <th className="border border-black p-1 text-center w-auto" colSpan="2">Cuti</th>
+                   <th className="border border-black p-1 text-center w-auto" colSpan="2">DL</th>
                 </tr>
                 <tr className="bg-slate-50 print:bg-transparent text-[10px] uppercase text-center">
-                   <th className="border border-black p-0.5 w-6 bg-green-50 print:bg-transparent">P</th>
-                   <th className="border border-black p-0.5 w-6 bg-green-100 print:bg-transparent">S</th>
+                   <th className="border border-black p-0.5 w-auto bg-green-50 print:bg-transparent">P</th>
+                   <th className="border border-black p-0.5 w-auto bg-green-100 print:bg-transparent">S</th>
                    
-                   <th className="border border-black p-0.5 w-6 bg-yellow-50 print:bg-transparent">P</th>
-                   <th className="border border-black p-0.5 w-6 bg-yellow-100 print:bg-transparent">S</th>
+                   <th className="border border-black p-0.5 w-auto bg-yellow-50 print:bg-transparent">P</th>
+                   <th className="border border-black p-0.5 w-auto bg-yellow-100 print:bg-transparent">S</th>
                    
-                   <th className="border border-black p-0.5 w-6 bg-blue-50 print:bg-transparent">P</th>
-                   <th className="border border-black p-0.5 w-6 bg-blue-100 print:bg-transparent">S</th>
+                   <th className="border border-black p-0.5 w-auto bg-blue-50 print:bg-transparent">P</th>
+                   <th className="border border-black p-0.5 w-auto bg-blue-100 print:bg-transparent">S</th>
                    
-                   <th className="border border-black p-0.5 w-6 bg-purple-50 print:bg-transparent">P</th>
-                   <th className="border border-black p-0.5 w-6 bg-purple-100 print:bg-transparent">S</th>
+                   <th className="border border-black p-0.5 w-auto bg-purple-50 print:bg-transparent">P</th>
+                   <th className="border border-black p-0.5 w-auto bg-purple-100 print:bg-transparent">S</th>
                    
-                   <th className="border border-black p-0.5 w-6 bg-orange-50 print:bg-transparent">P</th>
-                   <th className="border border-black p-0.5 w-6 bg-orange-100 print:bg-transparent">S</th>
+                   <th className="border border-black p-0.5 w-auto bg-orange-50 print:bg-transparent">P</th>
+                   <th className="border border-black p-0.5 w-auto bg-orange-100 print:bg-transparent">S</th>
                 </tr>
              </thead>
              <tbody>
                 {pegawaiOnly.map((emp, i) => {
-                   const stats = getStats(emp.id);
+                   const stats = calculateUserStats(emp.id); 
                    return (
                       <tr key={emp.id} className="hover:bg-slate-50">
-                         <td className="border border-black p-1 text-center align-middle">{emp.no || i+1}</td>
+                         {/* UPDATE: No Rapat */}
+                         <td className="border border-black p-1 text-center align-middle whitespace-nowrap">{emp.no || i+1}</td>
                          
+                         {/* UPDATE: Nama/NIP Rapat (Whitespace Nowrap) */}
                          <td className="border border-black p-1 text-left align-top whitespace-nowrap">
-                            {/* UPDATE: Line spacing menjadi normal (1.5) */}
-                            
-                            {/* 1. JABATAN */}
-                            <div className="text-[11px] italic text-slate-700 leading-normal">
-                                - {emp.jabatan}
-                            </div>
-                            
-                            {/* 2. NAMA */}
                             <div className="font-bold text-black text-sm leading-normal">
                                 {emp.nama}
                             </div>
-                            
-                            {/* 3. NIP */}
                             <div className="text-sm text-slate-800 leading-normal">
                                 NIP. {emp.nip || '-'}
                             </div>
+                         </td>
+
+                         {/* UPDATE: Jabatan Rapat, Text Left, Text SM */}
+                         <td className="border border-black p-1 text-left align-top text-sm w-[1%] whitespace-nowrap leading-normal">
+                             {emp.jabatan}
                          </td>
 
                          <td className="border border-black p-1 text-center bg-green-50 print:bg-transparent">{stats['Hadir'].p}</td>

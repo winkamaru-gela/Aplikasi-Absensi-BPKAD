@@ -1,79 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import { Printer, AlertTriangle } from 'lucide-react';
 import { getTodayString, formatDateIndo, formatDateNoWeekday, DEFAULT_LOGO_URL } from '../../utils/helpers';
+import { getDailyStats } from '../../utils/statistics'; // Import Logic Baru
 
 export default function AdminLaporanHarian({ employees, attendance, settings, holidays, isUserView = false }) {
   const [date, setDate] = useState(getTodayString());
-  const [session, setSession] = useState('Pagi');
+  const [session, setSession] = useState(() => {
+     const h = new Date().getHours();
+     return h >= 12 ? 'Sore' : 'Pagi';
+  });
   const [printTemplate, setPrintTemplate] = useState('v2');
   const [showSignature, setShowSignature] = useState(true);
-
-  // Default: Pegawai diurutkan berdasarkan Nama (Abjad) untuk keperluan umum (Alpa, Izin, dll)
-  const pegawaiOnly = employees.filter(e => e.role === 'user').sort((a, b) => a.nama.localeCompare(b.nama));
-
-  useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour >= 12) setSession('Sore');
-  }, []);
 
   // --- LOGIKA HARI LIBUR & WEEKEND ---
   const selectedDate = new Date(date);
   const isWeekend = selectedDate.getDay() === 0 || selectedDate.getDay() === 6; // 0=Minggu, 6=Sabtu
   const holidayData = holidays.find(h => h.date === date);
-  
   const isNonEffective = isWeekend || !!holidayData;
 
-  const logs = attendance.filter(l => l.date === date && l.session === session && l.statusApproval === 'approved');
-  
-  const hadir = logs.filter(l => l.status === 'Hadir').length;
-  const izin = logs.filter(l => l.status === 'Izin').length;
-  const sakit = logs.filter(l => l.status === 'Sakit').length;
-  const cuti = logs.filter(l => l.status === 'Cuti').length;
-  const dl = logs.filter(l => l.status === 'Dinas Luar').length;
-  
-  const recordedIds = logs.map(l => l.userId);
-  const alpaList = pegawaiOnly.filter(e => !recordedIds.includes(e.id));
-  const alpa = alpaList.length;
+  // --- GUNAKAN LOGIC TERPUSAT ---
+  const { grouped, counts } = getDailyStats(date, session, employees, attendance);
 
-  const totalPegawai = pegawaiOnly.length;
-  const totalTidakHadir = izin + sakit + cuti + dl + alpa;
-  const totalHadirFisik = hadir; 
+  // Sorting Khusus untuk Laporan (Hadir berdasarkan No, Sisanya Default/Nama)
+  const hadirList = grouped.Hadir.sort((a, b) => (parseInt(a.no) || 99999) - (parseInt(b.no) || 99999));
+  const sakitList = grouped.Sakit.sort((a, b) => a.nama.localeCompare(b.nama));
+  const izinList = grouped.Izin.sort((a, b) => a.nama.localeCompare(b.nama));
+  const cutiList = grouped.Cuti.sort((a, b) => a.nama.localeCompare(b.nama));
+  const dlList = grouped['Dinas Luar'].sort((a, b) => a.nama.localeCompare(b.nama));
+  const alpaList = grouped.Alpa.sort((a, b) => a.nama.localeCompare(b.nama));
 
-  const listTidakHadir = pegawaiOnly.map(emp => {
-     const log = logs.find(l => l.userId === emp.id);
-     if (!log) return { ...emp, status: 'Alpa (Tanpa Ket.)' };
-     if (log.status !== 'Hadir') return { ...emp, status: log.status };
-     return null; 
-  }).filter(Boolean); 
+  // Menggabungkan list tidak hadir untuk Template V1
+  const listTidakHadir = [
+      ...grouped.Alpa.map(e => ({...e, status: 'Alpa (Tanpa Ket.)'})),
+      ...grouped['Dinas Luar'].map(e => ({...e, status: 'Dinas Luar'})),
+      ...grouped.Izin.map(e => ({...e, status: 'Izin'})),
+      ...grouped.Sakit.map(e => ({...e, status: 'Sakit'})),
+      ...grouped.Cuti.map(e => ({...e, status: 'Cuti'}))
+  ];
 
-  const statusPriority = {
-    'Alpa (Tanpa Ket.)': 1,
-    'Dinas Luar': 2,
-    'Izin': 3,
-    'Sakit': 4,
-    'Cuti': 5
-  };
-
-  listTidakHadir.sort((a, b) => {
-     const pA = statusPriority[a.status] || 99;
-     const pB = statusPriority[b.status] || 99;
-     return pA - pB;
-  });
-
-  // --- LIST NAMA BERDASARKAN STATUS ---
-  const dlList = pegawaiOnly.filter(e => logs.some(l => l.userId === e.id && l.status === 'Dinas Luar'));
-  const sakitList = pegawaiOnly.filter(e => logs.some(l => l.userId === e.id && l.status === 'Sakit'));
-  const izinList = pegawaiOnly.filter(e => logs.some(l => l.userId === e.id && l.status === 'Izin'));
-  const cutiList = pegawaiOnly.filter(e => logs.some(l => l.userId === e.id && l.status === 'Cuti'));
-  
-  // UPDATE: Khusus daftar Hadir, diurutkan berdasarkan Nomor Urut (No) Pegawai
-  const hadirList = pegawaiOnly
-    .filter(e => logs.some(l => l.userId === e.id && l.status === 'Hadir'))
-    .sort((a, b) => {
-        const noA = parseInt(a.no) || 99999;
-        const noB = parseInt(b.no) || 99999;
-        return noA - noB;
-    });
+  const statusPriority = { 'Alpa (Tanpa Ket.)': 1, 'Dinas Luar': 2, 'Izin': 3, 'Sakit': 4, 'Cuti': 5 };
+  listTidakHadir.sort((a, b) => (statusPriority[a.status] || 99) - (statusPriority[b.status] || 99));
 
   return (
     <div className="space-y-6">
@@ -154,23 +120,23 @@ export default function AdminLaporanHarian({ employees, attendance, settings, ho
                       <div className="grid grid-cols-2 gap-8 mb-6 text-sm">
                           <div className="border border-black p-4">
                           <h3 className="font-bold border-b border-black mb-2 pb-1">Statistik Kehadiran</h3>
-                          <div className="flex justify-between mb-1"><span>Jumlah</span> <span className="font-bold">{totalPegawai} Orang</span></div>
-                          <div className="flex justify-between mb-1"><span>Kurang</span> <span className="font-bold">{totalTidakHadir} Orang</span></div>
+                          <div className="flex justify-between mb-1"><span>Jumlah</span> <span className="font-bold">{counts.TotalPegawai} Orang</span></div>
+                          <div className="flex justify-between mb-1"><span>Kurang</span> <span className="font-bold">{counts.TotalKurang} Orang</span></div>
                           
-                          <div className="flex justify-between mb-1"><span>Hadir</span> <span>{hadir} Orang</span></div>
+                          <div className="flex justify-between mb-1"><span>Hadir</span> <span>{counts.Hadir} Orang</span></div>
                           <div className="flex justify-between mt-2 pt-2 border-t border-dotted border-black font-bold">
-                              <span>Total Efektif</span> <span>{totalHadirFisik} Orang</span>
+                              <span>Total Efektif</span> <span>{counts.Hadir} Orang</span>
                           </div>
                           </div>
                           <div className="border border-black p-4">
                           <h3 className="font-bold border-b border-black mb-2 pb-1">Keterangan</h3>
-                          <div className="flex justify-between mb-1"><span>Tugas / Dinas Luar / Perjalanan Dinas</span> <span>{dl} Orang</span></div>
-                          <div className="flex justify-between mb-1"><span>Izin</span> <span>{izin} Orang</span></div>
-                          <div className="flex justify-between mb-1"><span>Sakit</span> <span>{sakit} Orang</span></div>
-                          <div className="flex justify-between mb-1"><span>Cuti</span> <span>{cuti} Orang</span></div>
-                          <div className="flex justify-between mb-1 font-bold text-red-600 print:text-black"><span>Tanpa Keterangan</span> <span>{alpa} Orang</span></div>
+                          <div className="flex justify-between mb-1"><span>Tugas / Dinas Luar / Perjalanan Dinas</span> <span>{counts.DL} Orang</span></div>
+                          <div className="flex justify-between mb-1"><span>Izin</span> <span>{counts.Izin} Orang</span></div>
+                          <div className="flex justify-between mb-1"><span>Sakit</span> <span>{counts.Sakit} Orang</span></div>
+                          <div className="flex justify-between mb-1"><span>Cuti</span> <span>{counts.Cuti} Orang</span></div>
+                          <div className="flex justify-between mb-1 font-bold text-red-600 print:text-black"><span>Tanpa Keterangan</span> <span>{counts.Alpa} Orang</span></div>
                           <div className="flex justify-between mt-2 pt-2 border-t border-dotted border-black font-bold">
-                              <span>Total Tidak Hadir</span> <span>{totalTidakHadir} Orang</span>
+                              <span>Total Tidak Hadir</span> <span>{counts.TotalKurang} Orang</span>
                           </div>
                           </div>
                       </div>
@@ -224,25 +190,25 @@ export default function AdminLaporanHarian({ employees, attendance, settings, ho
                               </tr>
                               <tr>
                                   <td className="border border-black p-2 font-bold align-top">JUMLAH</td>
-                                  <td className="border border-black p-2 font-bold align-top">{totalPegawai} Orang</td>
+                                  <td className="border border-black p-2 font-bold align-top">{counts.TotalPegawai} Orang</td>
                               </tr>
                               <tr>
                                   <td className="border border-black p-2 font-bold align-top">KURANG</td>
-                                  <td className="border border-black p-2 font-bold align-top">{totalTidakHadir} Orang</td>
+                                  <td className="border border-black p-2 font-bold align-top">{counts.TotalKurang} Orang</td>
                               </tr>
                               <tr>
                                   <td className="border border-black p-2 font-bold align-top">HADIR</td>
-                                  <td className="border border-black p-2 font-bold align-top">{hadir} Orang</td>
+                                  <td className="border border-black p-2 font-bold align-top">{counts.Hadir} Orang</td>
                               </tr>
                               <tr>
                                   <td className="border border-black p-2 font-bold align-top">KETERANGAN</td>
                                   <td className="border border-black p-2 align-top">
                                       <div className="flex flex-col gap-1">
-                                          <div><b>TUGAS</b> :  {dl}  ORANG</div>
-                                          <div><b>IZIN</b> :  {izin}  ORANG</div>
-                                          <div><b>CUTI</b> :  {cuti}  ORANG</div>
-                                          <div><b>SAKIT</b> :  {sakit}  ORANG</div>
-                                          <div><b>TANPA KETERANGAN</b> : {alpa}  ORANG</div>
+                                          <div><b>TUGAS</b> :  {counts.DL}  ORANG</div>
+                                          <div><b>IZIN</b> :  {counts.Izin}  ORANG</div>
+                                          <div><b>CUTI</b> :  {counts.Cuti}  ORANG</div>
+                                          <div><b>SAKIT</b> :  {counts.Sakit}  ORANG</div>
+                                          <div><b>TANPA KETERANGAN</b> : {counts.Alpa}  ORANG</div>
                                       </div>
                                   </td>
                               </tr>

@@ -78,6 +78,16 @@ export default function AdminCetakAbsensiManual({ employees, settings, holidays 
 
   return (
     <div className="space-y-6">
+      {/* Tambahkan style khusus print agar background color tetap muncul */}
+      <style>{`
+        @media print {
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+        }
+      `}</style>
+
       <div className="bg-white p-4 rounded shadow print:hidden flex flex-wrap gap-4 items-end justify-between">
          <div className="flex gap-4">
             <div>
@@ -105,9 +115,12 @@ export default function AdminCetakAbsensiManual({ employees, settings, holidays 
               <div className="flex border-b-2 border-black pb-2 mb-2 items-center justify-center relative">
                   <img src={settings.logoUrl || DEFAULT_LOGO_URL} className="h-12 absolute left-0" alt="logo"/>
                   <div className="text-center px-12">
-                     <h3 className="text-base font-bold uppercase">{settings.parentAgency}</h3>
-                     <h1 className="text-base font-bold uppercase">{settings.opdName}</h1>
-                     <p className="text-base italic">{settings.address}</p>
+                     {/* UPDATED: Parent Agency size increased (text-lg) */}
+                     <h3 className="text-lg font-bold uppercase">{settings.parentAgency}</h3>
+                     {/* UPDATED: OPD Name size increased (text-2xl) */}
+                     <h1 className="text-2xl font-bold uppercase">{settings.opdName}</h1>
+                     {/* UPDATED: Address size decreased (text-sm) */}
+                     <p className="text-sm italic">{settings.address}</p>
                   </div>
               </div>
 
@@ -122,10 +135,15 @@ export default function AdminCetakAbsensiManual({ employees, settings, holidays 
               <table className="w-full border-collapse border border-black text-[10px]">
                  <thead>
                     <tr className="bg-gray-200 print:bg-gray-100">
-                       {/* UPDATE: Padding dikurangi jadi p-[2px] */}
                        <th className="border border-black p-[2px] w-6" rowSpan="2">No</th>
-                       <th className="border border-black p-[2px] w-auto" rowSpan="2">Jabatan / Nama / NIP</th>
+                       {/* Header Nama / NIP */}
+                       <th className="border border-black p-[2px] w-auto" rowSpan="2">Nama / NIP</th>
                        
+                       <th className="border border-black p-[2px] w-12" rowSpan="2">Status</th>
+                       
+                       {/* Header Jabatan */}
+                       <th className="border border-black p-[2px] w-24" rowSpan="2">Jabatan</th>
+
                        {/* Render Header Tanggal Sesuai Hari Kerja di Minggu Tersebut */}
                        {week.days.length > 0 ? week.days.map((d, i) => (
                           <th key={i} className="border border-black p-[2px]" colSpan="2">
@@ -137,7 +155,7 @@ export default function AdminCetakAbsensiManual({ employees, settings, holidays 
                        
                        <th className="border border-black p-[2px] w-8" rowSpan="2">Keterangan</th>
                     </tr>
-                    <tr className="bg-gray-200 print:bg-gray-100 text-[8px] uppercase">
+                    <tr className="bg-gray-200 print:bg-gray-100 text-[8px] uppercase text-center">
                        {week.days.map((_, i) => (
                           <React.Fragment key={i}>
                              <th className="border border-black p-[2px] w-auto">Pagi</th>
@@ -149,22 +167,27 @@ export default function AdminCetakAbsensiManual({ employees, settings, holidays 
                  <tbody>
                     {sortedEmployees.map((emp, i) => (
                        <tr key={emp.id} className="break-inside-avoid" style={{ pageBreakInside: 'avoid' }}>
-                          {/* UPDATE: Padding dikurangi jadi p-[2px] */}
                           <td className="border border-black p-[2px] text-center align-middle">{emp.no || i+1}</td>
                           
                           <td className="border border-black p-[2px] whitespace-nowrap w-px align-middle">
-                             {/* Jabatan */}
-                             <div className="text-[11px] italic text-slate-700 leading-normal">
-                                 - {emp.jabatan}
-                             </div>
-                             {/* Nama */}
-                             <div className="font-bold text-black text-sm leading-normal">
+                             {/* Nama - Font size text-xs (sama dengan TTD) */}
+                             <div className="font-bold text-black text-xs leading-normal">
                                  {emp.nama}
                              </div>
-                             {/* NIP */}
-                             <div className="text-sm text-slate-800 leading-normal">
+                             {/* NIP - Font size text-xs */}
+                             <div className="text-xs text-slate-800 leading-normal">
                                  NIP. {emp.nip || '-'}
                              </div>
+                          </td>
+
+                          {/* Status Pegawai */}
+                          <td className="border border-black p-[2px] text-center align-middle font-bold text-[9px] uppercase">
+                             {emp.statusPegawai || '-'}
+                          </td>
+
+                          {/* Jabatan (Wraps Text) */}
+                          <td className="border border-black p-[2px] align-middle text-[10px] leading-tight whitespace-normal w-24">
+                              {emp.jabatan}
                           </td>
 
                           {/* Render Kolom Absensi Kosong / Libur */}
@@ -174,7 +197,8 @@ export default function AdminCetakAbsensiManual({ employees, settings, holidays 
                              
                              if(isHoliday) {
                                 return (
-                                   <td key={idx} colSpan="2" className="border border-black p-[2px] text-center bg-red-200 print:bg-gray-300">
+                                   // PERBAIKAN: Hapus print:bg-gray-300 dan ganti dengan print:bg-red-200
+                                   <td key={idx} colSpan="2" className="border border-black p-[2px] text-center bg-red-200 print:bg-red-200">
                                    </td>
                                 );
                              }

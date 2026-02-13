@@ -18,12 +18,11 @@ export default function AdminManajemenSurat() {
 
       {/* Judul & Pesan */}
       <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-3 text-center">
-        Fitur Dalam Riset & Pengembangan
+        Masih dalam Tahap Riset dan Analisis Teknis
       </h2>
       
       <p className="text-slate-500 text-center max-w-lg mb-8 leading-relaxed">
-        Modul <strong>Manajemen Surat Dinas</strong> saat ini sedang dalam tahap analisis dan penyempurnaan oleh tim pengembang untuk memastikan fitur berjalan stabil dan sesuai kebutuhan instansi.
-      </p>
+        Modul <strong>Manajemen Surat Dinas atau Aplikasi Surat </strong> saat ini sedang dalam tahap riset dan analisis oleh pengembang untuk memastikan fungsi dan fitur dapat diterapkan ke dalam aplikasi absensi saat ini. Semoga fitur ini dapat direalisasikan ke dalam aplikasi ini dan dapat menjalankan sistem manajemen absensi maupun manajemen surat </p>
 
       {/* Badge Status */}
       <div className="flex flex-col md:flex-row gap-4">
@@ -34,7 +33,7 @@ export default function AdminManajemenSurat() {
       </div>
 
       <p className="mt-12 text-xs text-slate-400 uppercase tracking-widest font-semibold">
-        Aplikasi Absensi & Manajemen © {new Date().getFullYear()}
+        Darwin Kamarudin (Dev) © {new Date().getFullYear()}
       </p>
     </div>
   );

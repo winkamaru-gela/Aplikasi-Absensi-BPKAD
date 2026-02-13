@@ -5,8 +5,17 @@ import { db, getCollectionPath } from '../../lib/firebase';
 import * as XLSX from 'xlsx'; // Import Library Excel
 
 export default function AdminDataPegawai({ employees, currentUser }) {
-  // 1. UPDATE STATE: Menambahkan field 'nip'
-  const [form, setForm] = useState({ nama: '', nip: '', jabatan: '', role: 'user', username: '', password: '', no: '' });
+  // 1. UPDATE STATE: Menambahkan field 'statusPegawai'
+  const [form, setForm] = useState({ 
+    nama: '', 
+    nip: '', 
+    jabatan: '', 
+    statusPegawai: 'PNS', // Default 
+    role: 'user', 
+    username: '', 
+    password: '', 
+    no: '' 
+  });
   
   const [isEditing, setIsEditing] = useState(null);
   const [isInserting, setIsInserting] = useState(null);
@@ -59,8 +68,9 @@ export default function AdminDataPegawai({ employees, currentUser }) {
                // Pastikan nama kolom di Excel sesuai (Case Insensitive logic optional)
                const no = row['NO'] ? row['NO'].toString() : '';
                const nama = row['NAMA'] || '';
-               const nip = row['NIP'] ? row['NIP'].toString() : ''; // Pastikan NIP jadi string
+               const nip = row['NIP'] ? row['NIP'].toString() : ''; 
                const jabatan = row['JABATAN'] || '';
+               const statusPegawai = row['STATUS'] || 'PNS'; // Baca Status
 
                if (nama && jabatan) {
                    // Buat username otomatis dari nama (huruf kecil, tanpa spasi/simbol)
@@ -71,6 +81,7 @@ export default function AdminDataPegawai({ employees, currentUser }) {
                        nama, 
                        nip, 
                        jabatan, 
+                       statusPegawai,
                        username, 
                        password: '123', // Default Password
                        role: 'user'
@@ -91,12 +102,12 @@ export default function AdminDataPegawai({ employees, currentUser }) {
     reader.readAsArrayBuffer(file);
   };
 
-  // 3. UPDATE TEMPLATE: Download format .xlsx
+  // 3. UPDATE TEMPLATE: Download format .xlsx dengan kolom STATUS
   const downloadTemplate = () => {
     // Data contoh untuk template
     const templateData = [
-        { NO: 1, NIP: "'198001012022011001", NAMA: "Contoh Nama Pegawai", JABATAN: "Staf Analis" },
-        { NO: 2, NIP: "'199505052024012002", NAMA: "Budi Santoso", JABATAN: "Operator" }
+        { NO: 1, NIP: "'198001012022011001", NAMA: "Contoh Nama Pegawai", JABATAN: "Staf Analis", STATUS: "PNS" },
+        { NO: 2, NIP: "'199505052024012002", NAMA: "Budi Santoso", JABATAN: "Operator", STATUS: "PPPK" }
     ];
 
     const ws = XLSX.utils.json_to_sheet(templateData);
@@ -107,16 +118,17 @@ export default function AdminDataPegawai({ employees, currentUser }) {
     XLSX.writeFile(wb, "Template_Import_Pegawai.xlsx");
   };
 
-  // 4. UPDATE EXPORT: Export data ke .xlsx
+  // 4. UPDATE EXPORT: Export data ke .xlsx dengan kolom STATUS
   const handleExport = () => {
     const dataToExport = employees
         .filter(e => e.role === 'user')
         .sort((a,b) => (parseFloat(a.no) || 999) - (parseFloat(b.no) || 999))
         .map(e => ({
             NO: e.no || '-',
-            NIP: e.nip || '-', // Tambahkan NIP
+            NIP: e.nip || '-', 
             NAMA: e.nama,
-            JABATAN: e.jabatan
+            JABATAN: e.jabatan,
+            STATUS: e.statusPegawai || '-', // Tambahkan Status
         }));
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
@@ -148,8 +160,8 @@ export default function AdminDataPegawai({ employees, currentUser }) {
          }
          await addDoc(getCollectionPath('users'), dataToSave);
       }
-      // Reset form termasuk NIP
-      setForm({ nama: '', nip: '', jabatan: '', role: 'user', username: '', password: '', no: '' });
+      // Reset form
+      setForm({ nama: '', nip: '', jabatan: '', statusPegawai: 'PNS', role: 'user', username: '', password: '', no: '' });
       setIsEditing(null);
       setIsInserting(null);
       await renumberAllEmployees();
@@ -164,8 +176,9 @@ export default function AdminDataPegawai({ employees, currentUser }) {
      // Set form insert
      setForm({ 
          nama: '', 
-         nip: '', // Reset NIP
+         nip: '', 
          jabatan: '', 
+         statusPegawai: 'PNS',
          role: 'user', 
          username: '', 
          password: '123', 
@@ -178,7 +191,7 @@ export default function AdminDataPegawai({ employees, currentUser }) {
     setIsEditing(emp.id);
     setIsInserting(null);
     // Isi form edit
-    setForm({ ...emp, password: emp.password || '' });
+    setForm({ ...emp, password: emp.password || '', statusPegawai: emp.statusPegawai || 'PNS' });
     if(formRef.current) formRef.current.scrollIntoView({ behavior: 'smooth' });
   };
 
@@ -227,7 +240,7 @@ export default function AdminDataPegawai({ employees, currentUser }) {
                    <Upload size={14} className="mr-1"/> Import Excel
                    <input 
                     type="file" 
-                    accept=".xlsx, .xls" // Ubah accept ke format excel
+                    accept=".xlsx, .xls"
                     hidden 
                     onChange={handleImport}
                    />
@@ -244,7 +257,6 @@ export default function AdminDataPegawai({ employees, currentUser }) {
         {!isReadOnly && (
           <div ref={formRef} className={`p-4 rounded mb-6 border-l-4 transition-colors ${isInserting ? 'bg-green-50 border-green-500' : 'bg-slate-50 border-blue-500'}`}>
             <h3 className="font-bold text-sm mb-3">{isEditing ? 'Edit Data' : isInserting ? 'Sisip Data' : 'Tambah Baru'}</h3>
-            {/* 5. UPDATE FORM LAYOUT: Menambahkan Input NIP */}
             <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-12 gap-3">
                <div className="md:col-span-1">
                    <label className="text-[10px] uppercase font-bold text-gray-500">No</label>
@@ -265,6 +277,18 @@ export default function AdminDataPegawai({ employees, currentUser }) {
                    <label className="text-[10px] uppercase font-bold text-gray-500">Jabatan</label>
                    <input placeholder="Jabatan" className="w-full p-2 border rounded" required value={form.jabatan} onChange={e=>setForm({...form, jabatan: e.target.value})} />
                </div>
+
+               {/* FIELD BARU: STATUS PEGAWAI (Di Baris Baru agar rapi) */}
+               <div className="md:col-span-4">
+                   <label className="text-[10px] uppercase font-bold text-gray-500">Status Pegawai</label>
+                   <select className="w-full p-2 border rounded bg-white" value={form.statusPegawai} onChange={e=>setForm({...form, statusPegawai: e.target.value})}>
+                       <option value="PNS">PNS</option>
+                       <option value="CPNS">CPNS</option>
+                       <option value="PPPK">PPPK</option>
+                       <option value="PPPK PW">PPPK PW</option>
+                       <option value="Honorer">Honorer / Lainnya</option>
+                   </select>
+               </div>
                
                <div className="md:col-span-4">
                    <label className="text-[10px] uppercase font-bold text-gray-500">Username</label>
@@ -276,9 +300,9 @@ export default function AdminDataPegawai({ employees, currentUser }) {
                    <input placeholder="Password" className="w-full p-2 border rounded bg-yellow-50" required value={form.password} onChange={e=>setForm({...form, password: e.target.value})} />
                </div>
                
-               <div className="md:col-span-4 flex gap-2 items-end">
-                  <button type="button" onClick={()=>{setForm({ nama: '', nip: '', jabatan: '', role: 'user', username: '', password: '', no: '' }); setIsEditing(null); setIsInserting(null);}} className="bg-gray-400 text-white py-2 px-4 rounded font-bold w-1/3 hover:bg-gray-500">Batal</button>
-                  <button disabled={isSaving} className="flex-1 bg-blue-600 text-white py-2 rounded font-bold flex justify-center items-center hover:bg-blue-700">
+               <div className="md:col-span-12 flex gap-2 items-end justify-end">
+                  <button type="button" onClick={()=>{setForm({ nama: '', nip: '', jabatan: '', statusPegawai: 'PNS', role: 'user', username: '', password: '', no: '' }); setIsEditing(null); setIsInserting(null);}} className="bg-gray-400 text-white py-2 px-4 rounded font-bold hover:bg-gray-500">Batal</button>
+                  <button disabled={isSaving} className="bg-blue-600 text-white py-2 px-6 rounded font-bold flex justify-center items-center hover:bg-blue-700 min-w-[100px]">
                      {isSaving ? <Loader className="animate-spin" size={16}/> : 'Simpan'}
                   </button>
                </div>
@@ -292,10 +316,11 @@ export default function AdminDataPegawai({ employees, currentUser }) {
                  <tr>
                     {!isReadOnly && <th className="p-2 border w-8 text-center"><input type="checkbox" /></th>}
                     <th className="p-2 border w-10 text-center">No</th>
-                    {/* 6. UPDATE TABLE HEAD: Tambah Header NIP */}
                     <th className="p-2 border text-left">NIP</th>
                     <th className="p-2 border text-left">Nama</th>
                     <th className="p-2 border text-left">Jabatan</th>
+                    {/* KOLOM BARU: Status Pegawai */}
+                    <th className="p-2 border text-left">Status</th> 
                     <th className="p-2 border text-left">Role</th>
                     {!isReadOnly && <th className="p-2 border w-32 text-center">Aksi</th>}
                  </tr>
@@ -305,12 +330,23 @@ export default function AdminDataPegawai({ employees, currentUser }) {
                     <tr key={emp.id} className={`hover:bg-slate-50 ${selectedIds.includes(emp.id) ? 'bg-blue-50' : ''}`}>
                        {!isReadOnly && <td className="p-2 border text-center"><input type="checkbox" checked={selectedIds.includes(emp.id)} onChange={() => toggleSelectOne(emp.id)}/></td>}
                        <td className="p-2 border text-center font-bold">{emp.no}</td>
-                       
-                       {/* 7. UPDATE TABLE BODY: Tampilkan Data NIP */}
                        <td className="p-2 border font-mono text-slate-600">{emp.nip || '-'}</td>
-                       
                        <td className="p-2 border font-medium">{emp.nama}</td>
                        <td className="p-2 border">{emp.jabatan}</td>
+                       
+                       {/* DATA BARU: Status Pegawai */}
+                       <td className="p-2 border">
+                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold
+                                ${emp.statusPegawai === 'PNS' ? 'bg-blue-100 text-blue-700' : ''}
+                                ${emp.statusPegawai === 'PPPK' ? 'bg-amber-100 text-amber-700' : ''}
+                                ${emp.statusPegawai === 'PPPK PW' ? 'bg-orange-100 text-orange-700' : ''}
+                                ${emp.statusPegawai === 'CPNS' ? 'bg-cyan-100 text-cyan-700' : ''}
+                                ${!['PNS', 'PPPK', 'PPPK PW', 'CPNS'].includes(emp.statusPegawai) ? 'bg-gray-100 text-gray-700' : ''}
+                           `}>
+                               {emp.statusPegawai || 'PNS'}
+                           </span>
+                       </td>
+
                        <td className="p-2 border uppercase text-xs font-bold">{emp.role}</td>
                        {!isReadOnly && (
                          <td className="p-2 border text-center flex justify-center gap-1">
