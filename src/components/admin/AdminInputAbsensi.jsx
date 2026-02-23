@@ -1,170 +1,261 @@
 import React, { useState, useEffect } from 'react';
-import { UserCheck, Search, Save } from 'lucide-react';
-import { writeBatch, doc } from 'firebase/firestore';
+import { Save, UserPlus, Calendar, Clock, CheckSquare, Square, Search, FileText, Trash2 } from 'lucide-react';
+import { writeBatch, doc } from "firebase/firestore";
 import { db, getCollectionPath } from '../../lib/firebase';
 import { getTodayString } from '../../utils/helpers';
 
 export default function AdminInputAbsensi({ employees, attendance }) {
   const [date, setDate] = useState(getTodayString());
   const [session, setSession] = useState('Pagi');
-  const [inputs, setInputs] = useState({});
-  const [searchTerm, setSearchTerm] = useState('');
+  const [status, setStatus] = useState('Hadir');
+  const [keterangan, setKeterangan] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const pegawaiList = employees.filter(e => e.role === 'user');
+  const uniqueKeterangan = Array.from(new Set(
+    (attendance || [])
+      .filter(a => a.keterangan && a.keterangan.trim() !== '')
+      .map(a => a.keterangan.trim())
+  )).sort();
 
-  useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour >= 12) setSession('Sore');
-  }, []);
-
-  useEffect(() => {
-    const map = {};
-    attendance.forEach(l => {
-      if (l.date === date && l.session === session) {
-        map[l.userId] = l.status;
-      }
-    });
-    setInputs(map);
-  }, [date, session, attendance]);
-
-  const handleSave = async () => {
-    const batch = writeBatch(db);
-    let count = 0;
-
-    for (const emp of pegawaiList) {
-       const status = inputs[emp.id];
-       const existingLog = attendance.find(l => l.date === date && l.session === session && l.userId === emp.id);
-       
-       if (status) {
-         const logData = {
-           date, session, userId: emp.id, userName: emp.nama, status,
-           statusApproval: 'approved', timestamp: new Date().toISOString()
-         };
-         if (existingLog) {
-            batch.update(doc(getCollectionPath('attendance'), existingLog.id), logData);
-         } else {
-            batch.set(doc(getCollectionPath('attendance'), `${date}_${session}_${emp.id}`), logData);
-         }
-         count++;
-       } else {
-         if (existingLog) {
-           batch.delete(doc(getCollectionPath('attendance'), existingLog.id));
-         }
-       }
-    }
-    await batch.commit();
-    alert('Data absensi berhasil disimpan!');
-  };
-
-  const statusOptions = ['Hadir','Izin','Sakit','Cuti','Dinas Luar'];
-
-  const filteredPegawaiList = pegawaiList
-    .filter(emp =>
-      emp.nama.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      emp.jabatan.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+  const userEmployees = employees
+    .filter(e => e.role === 'user')
+    .filter(e => {
+        const keyword = searchQuery.toLowerCase();
+        return e.nama.toLowerCase().includes(keyword) || (e.nip && e.nip.includes(keyword));
+    })
     .sort((a, b) => a.nama.localeCompare(b.nama));
 
+  useEffect(() => {
+    if (selectedIds.length === 1) {
+      const empId = selectedIds[0];
+      const record = attendance?.find(a => a.userId === empId && a.date === date && a.session === session);
+      if (record) {
+        setStatus(record.status || 'Hadir');
+        setKeterangan(record.keterangan || '');
+      }
+    } else if (selectedIds.length === 0) {
+      setKeterangan('');
+    }
+  }, [selectedIds, date, session, attendance]);
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === userEmployees.length && userEmployees.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(userEmployees.map(e => e.id));
+    }
+  };
+
+  const getEmployeeRecord = (empId) => {
+    if (!attendance) return null;
+    return attendance.find(a => 
+      a.userId === empId && 
+      a.date === date && 
+      a.session === session
+    );
+  };
+
+  const renderStatusCombined = (record) => {
+    if (!record || !record.status) {
+      return <span className="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-400 border border-slate-200 font-medium inline-block whitespace-nowrap">Belum Absen</span>;
+    }
+    
+    const badgeClass = "px-2 py-0.5 text-[10px] rounded border font-bold inline-block text-center whitespace-nowrap";
+    let statusBadge = null;
+
+    switch(record.status) {
+      case 'Hadir': statusBadge = <span className={`${badgeClass} bg-green-100 text-green-700 border-green-200`}>Hadir</span>; break;
+      case 'Izin': statusBadge = <span className={`${badgeClass} bg-blue-100 text-blue-700 border-blue-200`}>Izin</span>; break;
+      case 'Sakit': statusBadge = <span className={`${badgeClass} bg-yellow-100 text-yellow-700 border-yellow-200`}>Sakit</span>; break;
+      case 'Cuti': statusBadge = <span className={`${badgeClass} bg-purple-100 text-purple-700 border-purple-200`}>Cuti</span>; break;
+      case 'DL (Dinas Luar)': statusBadge = <span className={`${badgeClass} bg-indigo-100 text-indigo-700 border-indigo-200`}>DL</span>; break;
+      case 'Alpa': statusBadge = <span className={`${badgeClass} bg-red-100 text-red-700 border-red-200`}>Alpa</span>; break;
+      default: statusBadge = <span className={`${badgeClass} bg-gray-100 text-gray-700 border-gray-200`}>{record.status}</span>; break;
+    }
+
+    return (
+      <div className="flex flex-col items-start gap-1">
+        {statusBadge}
+        {record.keterangan && (
+          <div className="text-[10px] text-slate-500 italic leading-tight break-words max-w-[150px]">
+            ({record.keterangan})
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const handleSimpanMassal = async () => {
+    if (selectedIds.length === 0) return alert("Pilih minimal satu pegawai!");
+    if (!confirm(`Simpan absensi ${status} untuk ${selectedIds.length} pegawai?`)) return;
+
+    setIsSubmitting(true);
+    try {
+      const batch = writeBatch(db);
+      selectedIds.forEach(empId => {
+        const emp = employees.find(e => e.id === empId);
+        if (!emp) return;
+        const existingRecord = getEmployeeRecord(empId);
+        const docId = existingRecord ? existingRecord.id : `${empId}_${date}_${session}`;
+        const docRef = doc(getCollectionPath('attendance'), docId);
+        
+        batch.set(docRef, {
+          userId: empId,
+          userName: emp.nama,
+          userNip: emp.nip || '-',
+          date: date,
+          session: session,
+          status: status,
+          keterangan: keterangan.trim(),
+          timestamp: existingRecord?.timestamp || new Date().toISOString(),
+          statusApproval: 'approved',
+          method: 'manual_admin'
+        }, { merge: true }); 
+      });
+      await batch.commit();
+      alert('Data absensi berhasil disimpan!');
+      setSelectedIds([]);
+      setKeterangan('');
+    } catch (error) {
+      alert("Gagal menyimpan data.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResetMassal = async () => {
+    if (selectedIds.length === 0) return alert("Pilih pegawai yang akan di-reset!");
+    if (!confirm(`Hapus/Reset data absensi untuk ${selectedIds.length} pegawai terpilih?`)) return;
+
+    setIsSubmitting(true);
+    try {
+      const batch = writeBatch(db);
+      let count = 0;
+      selectedIds.forEach(empId => {
+        const record = getEmployeeRecord(empId);
+        if (record) {
+          batch.delete(doc(getCollectionPath('attendance'), record.id));
+          count++;
+        }
+      });
+      if (count > 0) {
+        await batch.commit();
+        alert(`${count} data absensi berhasil di-reset.`);
+      }
+      setSelectedIds([]);
+      setKeterangan('');
+    } catch (error) {
+      alert("Gagal mereset data.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm">
-      <h2 className="text-xl font-bold mb-4 flex items-center text-slate-800"><UserCheck className="mr-2"/> Input Absensi Pegawai</h2>
-      
-      <div className="flex flex-wrap gap-4 mb-6 bg-slate-100 p-4 rounded-lg items-end sticky top-0 z-10 shadow-sm">
-        <div>
-          <label className="block text-xs font-bold uppercase mb-1">Tanggal</label>
-          <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="border p-2 rounded w-40"/>
-        </div>
-        <div>
-          <label className="block text-xs font-bold uppercase mb-1">Sesi</label>
-          <select value={session} onChange={e=>setSession(e.target.value)} className="border p-2 rounded w-40">
-            <option>Pagi</option>
-            <option>Sore</option>
-          </select>
-        </div>
-        <div className="flex-1 min-w-[200px]">
-             <label className="block text-xs font-bold uppercase mb-1">Cari Pegawai</label>
-             <div className="relative">
-                <Search className="absolute left-2 top-2.5 text-slate-400" size={16} />
-                <input
-                  type="text"
-                  placeholder="Ketik nama pegawai..."
-                  className="border p-2 pl-8 rounded w-full"
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                />
-             </div>
-        </div>
-        <div className="flex ml-auto gap-2">
-           <button onClick={handleSave} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 flex items-center font-bold text-sm">
-             <Save size={16} className="mr-2"/> Simpan Absensi
-           </button>
-        </div>
-      </div>
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="bg-white p-6 rounded shadow-sm">
+        <h2 className="text-xl font-bold mb-6 flex items-center text-slate-800">
+          <UserPlus className="mr-2" /> Input & Reset Absensi Massal
+        </h2>
 
-      <div className="overflow-x-auto border-2 border-slate-300 rounded-lg">
-        <table className="w-full text-sm border-collapse">
-          <thead className="bg-slate-200 text-slate-700 uppercase text-xs">
-             <tr>
-               <th className="p-3 text-left border border-slate-300">Nama Pegawai / Jabatan</th>
-               <th className="p-3 text-center border border-slate-300">Status Kehadiran</th>
-             </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-300">
-             {filteredPegawaiList.map(emp => (
-               <tr key={emp.id} className="hover:bg-slate-50">
-                 <td className="p-3 border border-slate-300 bg-slate-50 font-medium">
-                   <div className="font-bold text-slate-800">{emp.nama}</div>
-                   <div className="text-xs text-slate-500">{emp.jabatan}</div>
-                 </td>
-                 <td className="p-3 border border-slate-300">
-                   <div className="flex justify-center gap-4 flex-wrap">
-                     {statusOptions.map(st => (
-                       <label key={st} className="flex items-center cursor-pointer space-x-2">
-                         <div className="relative flex items-center">
-                           <input 
-                             type="radio" 
-                             name={`status-${emp.id}`}
-                             checked={inputs[emp.id] === st}
-                             onChange={()=>setInputs({...inputs, [emp.id]: st})}
-                             className="w-5 h-5 text-blue-600 border-gray-300 focus:ring-blue-500 cursor-pointer"
-                           />
-                         </div>
-                         <span className={`text-xs font-bold ${inputs[emp.id] === st ? 'text-blue-700' : 'text-slate-600'}`}>
-                           {st.toUpperCase()}
-                         </span>
-                       </label>
-                     ))}
-                     
-                     <label className="flex items-center cursor-pointer space-x-2 border-l pl-4 ml-2 border-slate-300">
-                        <div className="relative flex items-center">
-                           <input 
-                             type="radio" 
-                             name={`status-${emp.id}`}
-                             checked={!inputs[emp.id]}
-                             onChange={()=>{
-                               const next = {...inputs};
-                               delete next[emp.id];
-                               setInputs(next);
-                             }}
-                             className="w-5 h-5 text-red-600 border-gray-300 focus:ring-red-500 cursor-pointer accent-red-600"
-                           />
-                        </div>
-                        <span className={`text-xs font-bold ${!inputs[emp.id] ? 'text-red-600' : 'text-slate-400'}`}>
-                           ALPA
-                        </span>
-                     </label>
-                   </div>
-                 </td>
-               </tr>
-             ))}
-          </tbody>
-        </table>
-      </div>
+        {/* Panel Kontrol */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 mb-6 p-4 bg-slate-50 rounded border items-end">
+          <div className="lg:col-span-2">
+            <label className="block text-xs font-bold mb-1 text-slate-500">Tanggal</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border rounded px-3 py-2 text-sm h-[38px] bg-white"/>
+          </div>
+          <div className="lg:col-span-2">
+            <label className="block text-xs font-bold mb-1 text-slate-500">Sesi</label>
+            <select value={session} onChange={e => setSession(e.target.value)} className="w-full border rounded px-3 py-2 text-sm h-[38px] bg-white">
+              <option value="Pagi">Pagi</option>
+              <option value="Sore">Sore</option>
+            </select>
+          </div>
+          <div className="lg:col-span-2">
+            <label className="block text-xs font-bold mb-1 text-slate-500">Status</label>
+            <select value={status} onChange={e => setStatus(e.target.value)} className="w-full border rounded px-3 py-2 text-sm h-[38px] bg-white font-medium">
+              <option value="Hadir">Hadir</option>
+              <option value="Izin">Izin</option>
+              <option value="Sakit">Sakit</option>
+              <option value="Cuti">Cuti</option>
+              <option value="DL (Dinas Luar)">DL (Dinas Luar)</option>
+              <option value="Alpa">Alpa</option>
+            </select>
+          </div>
+          <div className="lg:col-span-4">
+            <label className="block text-xs font-bold mb-1 text-slate-500">Keterangan (Opsional)</label>
+            <div className="flex items-center bg-white border rounded px-3 py-2 h-[38px]">
+              <FileText size={16} className="text-slate-400 mr-2 shrink-0"/>
+              <input type="text" list="riwayat-ket" value={keterangan} onChange={e => setKeterangan(e.target.value)} placeholder="Alasan..." className="w-full outline-none text-sm bg-transparent"/>
+              <datalist id="riwayat-ket">
+                {uniqueKeterangan.map((ket, idx) => <option key={idx} value={ket} />)}
+              </datalist>
+            </div>
+          </div>
+          <div className="lg:col-span-2 flex gap-2">
+            <button onClick={handleSimpanMassal} disabled={isSubmitting || selectedIds.length === 0} className="flex-1 bg-blue-600 text-white rounded font-bold hover:bg-blue-700 disabled:bg-gray-300 h-[38px] flex items-center justify-center transition-all shadow-sm">
+              {isSubmitting ? '...' : <><Save size={18} className="mr-2"/> Simpan</>}
+            </button>
+            <button onClick={handleResetMassal} disabled={isSubmitting || selectedIds.length === 0} className="bg-red-500 text-white px-3 rounded hover:bg-red-600 disabled:bg-gray-300 h-[38px] flex items-center justify-center transition-all shadow-sm">
+              <Trash2 size={18} />
+            </button>
+          </div>
+        </div>
 
-      <div className="mt-6 flex justify-end">
-         <button onClick={handleSave} className="bg-blue-600 text-white px-8 py-3 rounded shadow-lg hover:bg-blue-700 flex items-center font-bold text-base transition-transform transform hover:scale-105">
-             <Save size={20} className="mr-2"/> Simpan Absensi
-         </button>
+        <div className="border rounded overflow-hidden">
+          <div className="bg-gray-100 p-3 flex flex-col md:flex-row justify-between items-center border-b gap-4">
+            <button onClick={toggleSelectAll} className="flex items-center text-sm font-bold text-slate-600">
+              {selectedIds.length === userEmployees.length && userEmployees.length > 0 ? <CheckSquare size={18} className="mr-2 text-blue-600"/> : <Square size={18} className="mr-2"/>}
+              Pilih Semua ({userEmployees.length})
+            </button>
+            <div className="relative w-full md:w-72">
+               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+               <input type="text" placeholder="Cari nama/NIP..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border rounded outline-none bg-white"/>
+            </div>
+            <span className="text-sm font-bold text-blue-600">{selectedIds.length} Dipilih</span>
+          </div>
+          
+          <div className="max-h-[450px] overflow-y-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead className="bg-slate-50 sticky top-0 shadow-sm z-10 text-slate-700 font-bold">
+                <tr>
+                  <th className="p-3 text-left w-12">#</th>
+                  {/* Gunakan w-px agar kolom menyusut seminimal mungkin mengikuti konten */}
+                  <th className="p-3 text-left w-px whitespace-nowrap">Pegawai / NIP</th>
+                  <th className="p-3 text-left w-px whitespace-nowrap">Jabatan</th>
+                  <th className="p-3 text-left">Status Saat Ini</th>
+                </tr>
+              </thead>
+              <tbody>
+                {userEmployees.map(emp => {
+                  const isSelected = selectedIds.includes(emp.id);
+                  const record = getEmployeeRecord(emp.id);
+                  return (
+                    <tr key={emp.id} onClick={() => toggleSelect(emp.id)} className={`cursor-pointer border-b last:border-0 hover:bg-blue-50 transition-colors ${isSelected ? 'bg-blue-50' : ''}`}>
+                      <td className="p-3 text-center align-middle">
+                        {isSelected ? <CheckSquare size={18} className="text-blue-600 mx-auto"/> : <Square size={18} className="text-gray-300 mx-auto"/>}
+                      </td>
+                      <td className="p-3 whitespace-nowrap">
+                        <div className="font-bold text-slate-800 leading-tight">{emp.nama}</div>
+                        <div className="text-[10px] text-slate-400 font-mono uppercase">{emp.nip || '-'}</div>
+                      </td>
+                      <td className="p-3 text-slate-500 text-[11px] align-middle whitespace-nowrap">{emp.jabatan}</td>
+                      <td className="p-3 align-middle">{renderStatusCombined(record)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );
